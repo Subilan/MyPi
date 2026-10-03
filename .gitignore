@@ -12,8 +12,8 @@ dist
 dist-ssr
 *.local
 
-# Sidecar build output
-src-tauri/binaries
+# Generated agent bundle
+src-tauri/resources/agent
 
 # Editor directories and files
 .vscode/*

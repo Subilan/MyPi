@@ -5,6 +5,7 @@ import type {
   AgentRecord,
   AgentRequest,
   AgentStateData,
+  AgentStatus,
 } from "@shared/protocol";
 
 const RECORD_EVENT = "agent://record";
@@ -66,17 +67,18 @@ export class AgentClient {
     return this.#send<{ aborted: boolean }>({ type: "abort" });
   }
 
-  status(): Promise<{ running: boolean; connected: boolean }> {
-    return invoke<{ running: boolean; connected: boolean }>("agent_status");
+  status(): Promise<AgentStatus> {
+    return invoke<AgentStatus>("agent_status");
   }
 
   async waitUntilConnected(timeoutMs = 15000): Promise<void> {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
       const status = await this.status();
+      if (status.error) throw new Error(status.error);
       if (status.connected) return;
       if (Date.now() >= deadline) {
-        throw new Error("agent sidecar did not connect in time");
+        throw new Error("agent sidecar did not start in time");
       }
       await new Promise((resolve) => setTimeout(resolve, 100));
     }

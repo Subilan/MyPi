@@ -27,8 +27,14 @@ export interface AgentStateData {
   model: string;
 }
 
+export interface AgentStatus {
+  running: boolean;
+  connected: boolean;
+  error: string | null;
+}
+
 export type AgentRecord =
-  | { type: "ready"; runtime: AgentRuntimeInfo; token?: string }
+  | { type: "ready"; runtime: AgentRuntimeInfo }
   | { type: "response"; id: string; ok: true; data?: unknown }
   | { type: "response"; id: string; ok: false; error: string }
   | { type: "event"; name: string; data: unknown }

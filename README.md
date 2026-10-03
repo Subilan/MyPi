@@ -7,75 +7,82 @@
 三层，两个进程边界：
 
 ```
-React (WebView)  ←→  Rust 宿主 (Tauri)  ←→  sidecar (bun 编译的单文件二进制)
-   UI / 状态            窗口、生命周期、         Agent 循环、模型调用、工具执行
-                        sidecar 启停、协议转发
+React (WebView)  ←→  Rust 宿主 (Tauri)  ←→  sidecar (用户机器上的 Node 22)
+   UI / 状态            窗口、生命周期、          Agent 循环、模型调用、工具执行
+                        找 node、启停子进程、
+                        协议转发
 ```
 
-前端不直接碰模型、文件系统或网络。一次请求的路径是：前端 `invoke("agent_request", { payload })` → Rust 写进 sidecar 的 TCP 连接 → sidecar 处理 → 逐行吐回记录 → Rust 转发成 `agent://record` 事件 → 前端。协议类型定义在 `shared/protocol.ts`，前端与 sidecar 共用一份。
+前端不直接碰模型、文件系统或网络。一次请求的路径是：前端 `invoke("agent_request", { payload })` → Rust 写进子进程 stdin → sidecar 处理 → 逐行写到 stdout → Rust 转成 `agent://record` 事件 → 前端。协议类型定义在 `shared/protocol.ts`，前端与 sidecar 共用一份。
 
-前端与 sidecar 之间是 127.0.0.1 上随机端口的一条 TCP 连接，不是 stdin/stdout。原因值得记下来：bun 1.1.7 的 `process.stdin` 收不到 Rust（或 Tauri 插件）创建并作为子进程 fd 0 的那个管道里的数据，`Bun.stdin.stream()` 同样收不到，只有阻塞的 `readSync(0, ...)` 能读到。阻塞读会饿死事件循环，而 worker 线程在 `bun build --compile` 的产物里又解析不到模块（`$bunfs` 找不到路径）。有趣的是 shell 下 `printf ... | sidecar` 一切正常，所以问题只在 Rust 建管道这一侧。换成 TCP 后三平台行为一致，代价是多了一个 30 行的握手。
+sidecar 的代码用 esbuild 打成一个平台无关的 `index.mjs`（约 480KB），作为 Tauri 的 resource 随应用分发，运行时由用户机器上的 Node 执行，不打包任何运行时。三平台共用同一个产物，交叉编译、按平台分包这类事情都不用管了。
 
-握手过程：Rust `bind("127.0.0.1:0")` 拿到随机端口，生成随机 token，通过环境变量 `AGENT_RUNBOOK_PORT` 和 `AGENT_RUNBOOK_TOKEN` 传给子进程；sidecar 连回来后的第一条记录带 token，Rust 校验通过才把它剥掉并转发给前端。校验失败会直接杀掉 sidecar。
+之前试过把 sidecar 编译成自包含二进制，因此踩到 bun 1.1.7 的一个坑：`process.stdin` 收不到 Rust（或 Tauri 官方 shell 插件）创建并作为子进程 fd 0 的管道数据，`Bun.stdin.stream()` 同样收不到，只有阻塞 `readSync(0, ...)` 能读到，而阻塞读会饿死事件循环，worker 线程在 `--compile` 产物里又解析不到模块。换成 Node 之后这个问题不存在，`node` 从 Rust 建的管道读 stdin 完全正常，所以传输层就用了最朴素的 stdin/stdout。回退到 bun 之前，建议先确认这一点。
 
-sidecar 用 `bun build --compile` 打成自包含二进制，通过 Tauri 的 `externalBin` 随应用分发，用户机器不需要装 Node 或 bun。代价是每个平台多出约 50 到 100MB。
+## Node 的查找与版本要求
+
+要求 Node ≥ 22（22 LTS 是测试目标，更高的主版本也能跑）。Rust 侧按顺序探测候选：`AGENT_RUNBOOK_NODE` 指定的路径、`PATH`、Volta / fnm / asdf / mise / nvm / scoop / Homebrew / 系统目录等常见位置，逐个执行 `node --version`，取第一个主版本 ≥ 22 的。之所以要扫目录，是因为 macOS 上从 Finder 启动的 GUI 应用拿不到登录 shell 的 `PATH`，nvm 装的 node 不在默认路径里。
+
+找不到或版本过低时不会崩，应用照常启动，界面上会显示一条可读的错误（例如"node 22 or newer is required, found only v20.17.0 /usr/local/bin/node"）。前端轮询 `agent_status`，Rust 把错误放在 `error` 字段里返回，所以即使错误发生在窗口加载之前也不会丢。
+
+两个环境变量可以覆盖默认行为：
+
+| 变量 | 作用 |
+| --- | --- |
+| `AGENT_RUNBOOK_NODE` | 指定用哪个 node 二进制 |
+| `AGENT_RUNBOOK_AGENT_SCRIPT` | 指定跑哪个 agent 产物，调试用 |
+
+Windows 下启动子进程会带 `CREATE_NO_WINDOW`，避免弹出控制台窗口。
 
 ## 目录
 
 ```
 shared/protocol.ts         前端与 sidecar 共用的 JSONL 协议类型
-sidecar/src/index.ts       传输层：TCP 或 stdio，JSONL 帧解析
+sidecar/src/index.ts       stdin/stdout 上的 JSONL 主循环
 sidecar/src/agent-host.ts  pi-agent-core 接线处，换真实模型的入口
 src/lib/agent/client.ts    前端客户端：请求 id 关联、事件分发、断线处理
-src-tauri/src/agent.rs     sidecar 的启动、握手、转发、退出清理
-scripts/build-sidecar.mjs  按 target triple 交叉编译 sidecar
+src-tauri/src/agent.rs     找 node、启停 sidecar、转发记录
+scripts/build-sidecar.mjs  用 esbuild 打包 sidecar
 ```
 
 ## 前置依赖
 
-Node ≥ 22.19、bun、rustup 管理的 rustc ≥ 1.90（Tauri 2.12 的要求）。Linux 还要 WebKitGTK 相关包，Windows 要 MSVC 工具链与 WebView2，见 Tauri 官方前置依赖说明。
+Node ≥ 22（用户的机器上也要求有）、npm、rustup 管理的 rustc ≥ 1.90（Tauri 2.12 的要求）。Linux 还要 WebKitGTK 相关包，Windows 要 MSVC 工具链与 WebView2，见 Tauri 官方前置依赖说明。
 
 ## 开发命令
 
 | 命令 | 作用 |
 | --- | --- |
-| `npm run tauri dev` | 完整开发：编译 sidecar、起 Vite、开窗口 |
+| `npm run tauri dev` | 完整开发：打包 sidecar、起 Vite、开窗口 |
 | `npm run dev` | 只起 Vite，在浏览器里调 UI（agent 桥接不可用） |
 | `npm run tauri build` | 出安装包，产物在 `src-tauri/target/release/bundle` |
-| `npm run sidecar:build` | 只编译当前平台的 sidecar |
-| `npm run sidecar:build:all` | 编译全部已知目标 |
-| `npm run sidecar:dev` | 用 stdio 模式单独跑 sidecar |
+| `npm run sidecar:build` | 只重新打包 sidecar |
+| `npm run sidecar:dev` | 打完包后直接用 node 跑 sidecar |
 | `npm run typecheck` | 前端与 sidecar 两套 tsconfig 一起查 |
 
-`predev` 与 `prebuild` 钩子会先跑 `sidecar:build`，所以改完 sidecar 代码重启 `tauri dev` 即可生效，不会跑到旧二进制。
+`predev` 与 `prebuild` 钩子会先跑 `sidecar:build`，所以改完 sidecar 代码重启 `tauri dev` 即可生效。生成的 `src-tauri/resources/agent/index.mjs` 是构建产物，不进版本库。
 
-注意不要直接 `cargo build` 出来的裸二进制当作运行方式，嵌入的前端资源可能不是最新的；用 `npm run tauri dev` 或 `tauri build` 的产物。
+不要用直接 `cargo build` 出来的裸二进制当运行方式，嵌入的前端资源可能不是最新的；用 `npm run tauri dev` 或 `tauri build` 的产物。
 
-## 手动调试 sidecar
+## 手动调试
 
-不给 `AGENT_RUNBOOK_PORT` 时 sidecar 走 stdio 模式，可以直接对着它说协议，方便不开窗口调 agent 逻辑：
-
-```bash
-printf '{"id":"1","type":"hello","name":"su"}\n{"id":"2","type":"prompt","text":"hi"}\n' | npm run sidecar:dev
-```
-
-桥接本身看不见，排查时用 `AGENT_RUNBOOK_DEBUG=1 npm run tauri dev`，Rust 侧会把启动、握手、每条命令和每条记录打到 stderr。
-
-## 跨平台构建
-
-sidecar 的编译目标由 Rust target triple 决定，输出到 `src-tauri/binaries/agent-runbook-agent-<triple>`，文件名必须与 triple 对上，否则 Tauri 找不到。
+不给别的条件时 sidecar 就是 stdin/stdout 模式，可以直接对着它说协议，方便不开窗口调 agent 逻辑：
 
 ```bash
-npm run sidecar:build -- --target x86_64-pc-windows-msvc
-npm run tauri build -- --target x86_64-pc-windows-msvc
+# 交互式，逐行输入 JSON 请求，Ctrl-D 退出
+npm run sidecar:dev
+
+# 或者一次性喂进去
+npm run sidecar:build
+printf '{"id":"1","type":"hello","name":"su"}\n{"id":"2","type":"prompt","text":"hi"}\n' | node src-tauri/resources/agent/index.mjs
 ```
 
-triple 与 bun target 的映射表在 `scripts/build-sidecar.mjs`。本机用 bun 1.1.7 实测：macOS 双架构、Linux gnu 双架构、Windows x64 都能交叉编译成功，musl 两个目标和 Windows arm64 在 1.1.7 上不支持，`bun upgrade` 之后可用。Tauri 本体和最终打包一般还是要在目标系统上做，CI 按平台分别跑最省事。
+桥接过程看不见，排查时用 `AGENT_RUNBOOK_DEBUG=1 npm run tauri dev`，Rust 侧会把找到的 node、产物路径、每条命令和每条记录打到 stderr。
 
 ## 接真实模型
 
-现在用 pi-ai 的 `fauxProvider`，不需要凭证，回复是脚本化的，只为验证链路。界面上的 Badge 会标明 demo provider。换成真实模型改 `sidecar/src/agent-host.ts`：用 `@earendil-works/pi-ai/providers/*` 里的 provider 替换 faux，把 API key 的来源定下来（环境变量、系统密钥串、或设置界面），并把 `demo` 置为 false。
+现在用 pi-ai 的 `fauxProvider`，不需要凭证，回复是脚本化的，只为验证链路。界面上的 Badge 会标明 demo provider。换成真实模型改 `sidecar/src/agent-host.ts`：用 `@earendil-works/pi-ai/providers/*` 里的 provider 替换 faux，把 API key 的来源定下来（环境变量、系统密钥串、或设置界面），并把 `demo` 置为 false。密钥还没定方案，这是下一步要拍板的事。
 
 ## 还没做的
 
-聊天界面的组件与交互是下一步重点。会话持久化、工具集（读写文件、执行命令）、模型与密钥的设置界面、断线后的自动重连都还没有。sidecar 崩溃时前端会收到 `closed` 记录并显示错误，但不会自动重启。
+聊天界面的组件与交互是下一步重点。会话持久化、工具集（读写文件、执行命令）、模型与密钥的设置界面、sidecar 异常退出后的自动重启、以及 agent 的工作目录都还没有。sidecar 挂掉时前端会收到 `closed` 记录并显示原因，但不会自动重启。

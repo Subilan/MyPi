@@ -1,4 +1,3 @@
-import { connect } from "node:net";
 import type { AgentEvent } from "@earendil-works/pi-agent-core";
 import corePkg from "@earendil-works/pi-agent-core/package.json";
 import {
@@ -9,13 +8,11 @@ import {
 } from "../../shared/protocol.ts";
 import { createAgentHost } from "./agent-host.ts";
 
-const bunRuntime = (globalThis as { Bun?: { version: string } }).Bun;
-const runtime = bunRuntime ? `bun ${bunRuntime.version}` : `node ${process.version}`;
 const host = createAgentHost(emitEvent);
 
 const info: AgentRuntimeInfo = {
   protocol: AGENT_PROTOCOL_VERSION,
-  runtime,
+  runtime: `node ${process.version}`,
   platform: `${process.platform} ${process.arch}`,
   coreVersion: `@earendil-works/pi-agent-core ${corePkg.version}`,
   model: host.model,
@@ -23,12 +20,9 @@ const info: AgentRuntimeInfo = {
 };
 
 let buffer = "";
-let writeLine: (line: string) => void = (line) => {
-  process.stdout.write(`${line}\n`);
-};
 
 function emit(record: AgentRecord): void {
-  writeLine(JSON.stringify(record));
+  process.stdout.write(`${JSON.stringify(record)}\n`);
 }
 
 function log(level: "info" | "warn" | "error", message: string): void {
@@ -132,38 +126,12 @@ function emitEvent(event: AgentEvent): void {
   emit({ type: "event", name, data });
 }
 
-function serveTcp(port: number, token: string): void {
-  const socket = connect({ host: "127.0.0.1", port });
-  socket.setEncoding("utf8");
-  writeLine = (line) => {
-    socket.write(`${line}\n`);
-  };
-  socket.on("connect", () => {
-    emit({ type: "ready", token, runtime: info });
-  });
-  socket.on("data", feed);
-  socket.on("close", () => {
-    process.exit(0);
-  });
-  socket.on("error", (error: Error) => {
-    log("error", `socket failed: ${error.message}`);
-    process.exit(1);
-  });
-}
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", feed);
+process.stdin.on("end", () => {
+  log("info", "stdin closed, exiting");
+  process.exit(0);
+});
 
-function serveStdio(): void {
-  process.stdin.setEncoding("utf8");
-  process.stdin.on("data", feed);
-  emit({ type: "ready", runtime: info });
-}
-
-const port = Number(process.env.AGENT_RUNBOOK_PORT ?? "");
-const token = process.env.AGENT_RUNBOOK_TOKEN ?? "";
-
-if (Number.isInteger(port) && port > 0) {
-  log("info", `connecting to host on 127.0.0.1:${port}`);
-  serveTcp(port, token);
-} else {
-  log("info", "no AGENT_RUNBOOK_PORT set, serving the protocol over stdin/stdout");
-  serveStdio();
-}
+log("info", `serving the protocol over stdin/stdout as node ${process.version}`);
+emit({ type: "ready", runtime: info });

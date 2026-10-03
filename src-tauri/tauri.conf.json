@@ -13,8 +13,10 @@
     "windows": [
       {
         "title": "agent-runbook",
-        "width": 800,
-        "height": 600
+        "width": 1000,
+        "height": 700,
+        "minWidth": 640,
+        "minHeight": 480
       }
     ],
     "security": {
@@ -24,6 +26,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "externalBin": ["binaries/agent-runbook-agent"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

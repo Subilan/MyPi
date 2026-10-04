@@ -140,10 +140,12 @@ Deliver 面向“让 agent 交活”的场景：
 
 - 思考内容、工具调用过程、模型的自由正文都不展示，运行期间只在记录末尾显示 `Working...` 和已耗时。
 - 每次任务必须以一个交付工具的调用收尾，普通的 Read / Edit / Write / Bash 仍照常执行，只是界面上看不到。
-- 交付结果以结构化块呈现：`report_success` 显示完成描述与建议的下一步，`report_failure` 显示失败原因与调整建议。
-- `request_user_decision` 在聊天记录里渲染成选择题块，支持是否题、单选题、多选题，可一次问多个问题；工具会阻塞当前 run，等用户在卡片上作答后把答案作为工具结果交回模型，同一轮继续。
+- 交付结果以结构化块呈现：`report_success` 显示完成描述、交付产物与建议的下一步，`report_failure` 显示失败原因与调整建议。
+- `request_user_decision` 在聊天记录里渲染成选择题块，支持是否题、单选题、多选题，可一次问多个问题；工具会阻塞当前 run，等用户在卡片上作答后把答案作为工具结果交回模型，同一轮继续。是否题用按钮，单选题用 radio group，多选题用 checkbox group；选项的 `label` 只放内容本身，`description` 作为介绍在鼠标悬停的 tooltip 里展示；每个问题可以带 `allow_others`，开启后会出现一个「其它」项，用户选中后可以自己输入，默认开启；这一项由界面统一追加，工具描述里也明确要求模型不要在 `options` 里自带同类选项，否则会出现两个「其它」。
 
 系统通知、选择题、交付结果跟用户消息用同一套版式（整宽、相同的内边距与 `15px/行高`），只用底色区分：系统通知与选择题是浅蓝，交付成功是浅绿，交付失败是浅红。
+
+`report_success` 的 `artifacts` 是交付产物路径列表，可以是网页链接（`http://` / `https://`）或本地绝对路径。前端在「交付产物」下逐条列出，点击网页链接交给系统浏览器打开，点击本地路径用系统默认应用打开。本地路径的打开权限限制在 `$HOME` / `$TEMP` / `$DOWNLOAD` / `$DOCUMENT` / `$DESKTOP` 与 `/tmp` 这些目录下（见 `src-tauri/capabilities/default.json` 里 `opener:allow-open-path` 的 scope），scope 之外的路径会提示打不开。
 
 模式切换通过 sidecar 的 `mode_set` 请求完成：sidecar 会带上已有对话重建 Agent，换成对应的系统提示词与工具集，历史消息不丢。`finishTurn` 钩子在 deliver 模式下保证任务以 `report_success` / `report_failure` 结束；如果模型只输出了正文而没有调用工具，会被连续追发几次请求逼它交付，最多三次后放行，避免死循环。
 

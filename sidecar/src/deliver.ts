@@ -16,7 +16,7 @@ export class DecisionRegistry {
       const onAbort = () => {
         this.pending.delete(toolCallId);
         this.early.delete(toolCallId);
-        reject(new Error("已被中止"));
+        reject(new Error("已中止"));
       };
       if (signal?.aborted) {
         onAbort();
@@ -44,17 +44,22 @@ export class DecisionRegistry {
 
 const successParameters = Type.Object({
   description: Type.String({
-    maxLength: 500,
-    description: "对已完成任务的简要描述，不超过 500 字",
+    maxLength: 50,
+    description: "对已完成任务的简要描述，不超过 50 字",
   }),
   nextSteps: Type.Optional(
     Type.Array(Type.String(), { description: "建议用户接下来可以做的事" }),
   ),
+  artifacts: Type.Optional(
+    Type.Array(Type.String(), { description: "交付产物的路径，可以是网页链接或本地绝对路径" }),
+  ),
 });
 
 const failureParameters = Type.Object({
-  reason: Type.String({ description: "无法按要求交付的原因" }),
-  suggestion: Type.Optional(Type.String({ description: "用户可以如何调整需求或环境" })),
+  reason: Type.String({ maxLength: 50, description: "无法按要求交付的原因，不超过 50 字" }),
+  suggestion: Type.Optional(
+    Type.Array(Type.String(), { description: "用户可以如何调整需求或环境的建议" }),
+  ),
 });
 
 const decisionParameters = Type.Object({
@@ -66,7 +71,22 @@ const decisionParameters = Type.Object({
       }),
       question: Type.String({ description: "要问用户的问题" }),
       options: Type.Optional(
-        Type.Array(Type.String(), { description: "single / multi 的候选项，yes_no 不需要" }),
+        Type.Array(
+          Type.Object({
+            label: Type.String({
+              description: "选项内容，不要写「其它」之类的兜底项，界面会自己追加",
+            }),
+            description: Type.Optional(
+              Type.String({ description: "选项介绍，鼠标悬停时展示" }),
+            ),
+          }),
+        ),
+      ),
+      allow_others: Type.Optional(
+        Type.Boolean({
+          description:
+            "是否允许用户自行输入其它答案，默认允许。开启时界面会自动在选项末尾追加一个「其它」项，用户选中后可以输入自己的答案，所以不要在 options 里重复添加；想彻底去掉这个入口才传 false",
+        }),
       ),
     }),
   ),
@@ -81,12 +101,16 @@ function reportSuccess(): AgentTool<typeof successParameters> {
     name: "report_success",
     label: "交付成功",
     description:
-      "任务已经按要求完成时调用，向用户结构化交付结果。调用后本次任务结束，不要再输出正文或调用其它工具。",
+      "任务已经按要求完成时调用，向用户结构化交付结果。调用后本次任务结束。",
     parameters: successParameters,
     async execute(_id, params): Promise<AgentToolResult> {
       return {
         content: [{ type: "text", text: "已向用户交付成功结果，本次任务结束。" }],
-        details: { description: params.description, nextSteps: params.nextSteps ?? [] },
+        details: {
+          description: params.description,
+          nextSteps: params.nextSteps ?? [],
+          artifacts: params.artifacts ?? [],
+        },
       };
     },
   };
@@ -97,12 +121,12 @@ function reportFailure(): AgentTool<typeof failureParameters> {
     name: "report_failure",
     label: "交付失败",
     description:
-      "无法按要求完成任务时调用，向用户说明原因。调用后本次任务结束，不要再输出正文或调用其它工具。",
+      "无法按要求完成任务时调用，向用户说明原因。调用后本次任务结束。",
     parameters: failureParameters,
     async execute(_id, params): Promise<AgentToolResult> {
       return {
         content: [{ type: "text", text: "已向用户交付失败原因，本次任务结束。" }],
-        details: { reason: params.reason, suggestion: params.suggestion ?? "" },
+        details: { reason: params.reason, suggestion: params.suggestion ?? [] },
       };
     },
   };

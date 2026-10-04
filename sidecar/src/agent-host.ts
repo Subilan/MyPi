@@ -206,9 +206,10 @@ const DELIVER_PROMPT = [
   "## Deliver mode",
   "The user only sees structured deliverables, never your free-form text. Do not reply with prose.",
   "Do the work with the available tools, then end the task by calling exactly one of:",
-  "- report_success: the request is fulfilled. Include a concise description (max 500 chars) and optional next steps.",
-  "- report_failure: you cannot fulfill the request. Explain the reason and an optional suggestion.",
+  "- report_success: the request is fulfilled. Include a concise description (max 50 chars), optional artifact paths (web links or absolute local paths), and optional next steps.",
+  "- report_failure: you cannot fulfill the request. Explain the reason (max 50 chars) and optional suggestions.",
   "When the user must make a choice, call request_user_decision with one question or a batch of questions before guessing.",
+  "Every tool argument must match its field's semantics; never pass information that does not belong to a field.",
 ].join("\n");
 
 function composeSystemPrompt(base: string, workdir: string, mode: ChatMode): string {

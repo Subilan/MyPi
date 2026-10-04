@@ -49,6 +49,8 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
   const [bridgeError, setBridgeError] = useState<string | null>(null);
 
   const runningRef = useRef(false);
+  const abortingRef = useRef(false);
+  const abortReportedRef = useRef(false);
   const counterRef = useRef(0);
   const assistantIdRef = useRef<string | null>(null);
   const editSystemPromptRef = useRef(options.onEditSystemPrompt);
@@ -78,6 +80,12 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
     },
     [nextId],
   );
+
+  const reportAbort = useCallback(() => {
+    if (abortReportedRef.current) return;
+    abortReportedRef.current = true;
+    appendError("已中止");
+  }, [appendError]);
 
   const setRunningSafe = useCallback((next: boolean) => {
     runningRef.current = next;
@@ -168,7 +176,7 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
             thinking: false,
             error: errorFor(end),
           }));
-          if (end.stopReason === "aborted") appendError("已中止");
+          if (end.stopReason === "aborted") reportAbort();
           return;
         }
         case "tool_execution_start": {
@@ -222,25 +230,37 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
           const { message: reason } = data as AgentRunErrorData;
           setRunningSafe(false);
           setRunStartedAt(null);
-          finishAssistant((message) => ({
-            ...message,
-            streaming: false,
-            thinking: false,
-            error: reason || "agent 运行失败",
-          }));
+          if (abortingRef.current) {
+            finishAssistant((message) => ({
+              ...message,
+              streaming: false,
+              thinking: false,
+              error: null,
+            }));
+            reportAbort();
+          } else {
+            finishAssistant((message) => ({
+              ...message,
+              streaming: false,
+              thinking: false,
+              error: reason || "agent 运行失败",
+            }));
+          }
           return;
         }
         case "agent_end": {
           setRunningSafe(false);
           setRunStartedAt(null);
           stopStreaming();
+          if (abortingRef.current) reportAbort();
+          abortingRef.current = false;
           return;
         }
         default:
           return;
       }
     },
-    [appendError, applyToAssistant, finishAssistant, setRunningSafe, stopStreaming],
+    [appendError, applyToAssistant, finishAssistant, reportAbort, setRunningSafe, stopStreaming],
   );
 
   useEffect(() => {
@@ -373,6 +393,9 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
         return;
       }
 
+      abortReportedRef.current = false;
+      abortingRef.current = false;
+
       const assistantId = nextId();
       const assistantMessage: AssistantMessage = {
         id: assistantId,
@@ -407,7 +430,11 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
   );
 
   const stop = useCallback(() => {
-    client.abort().catch((error: unknown) => toast.error(describe(error)));
+    abortingRef.current = true;
+    client.abort().catch((error: unknown) => {
+      abortingRef.current = false;
+      toast.error(describe(error));
+    });
   }, [client]);
 
   const answerDecision = useCallback(

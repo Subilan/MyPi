@@ -6,6 +6,17 @@
   "permissions": [
     "core:default",
     "core:window:allow-close",
-    "opener:default"
+    "opener:default",
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [
+        { "path": "$HOME/**" },
+        { "path": "$TEMP/**" },
+        { "path": "$DOWNLOAD/**" },
+        { "path": "$DOCUMENT/**" },
+        { "path": "$DESKTOP/**" },
+        { "path": "/tmp/**" }
+      ]
+    }
   ]
 }

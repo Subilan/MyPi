@@ -2,11 +2,17 @@ export const AGENT_PROTOCOL_VERSION = 1;
 
 export type ChatMode = "regular" | "deliver";
 
+export interface DecisionOption {
+  label: string;
+  description?: string;
+}
+
 export interface DecisionQuestion {
   id: string;
   type: "yes_no" | "single" | "multi";
   question: string;
-  options?: string[];
+  options?: DecisionOption[];
+  allow_others?: boolean;
 }
 
 export interface DecisionAnswer {

@@ -15,11 +15,18 @@ const info: AgentRuntimeInfo = {
   runtime: `node ${process.version}`,
   platform: `${process.platform} ${process.arch}`,
   coreVersion: `@earendil-works/pi-agent-core ${corePkg.version}`,
+  provider: host.provider,
   model: host.model,
-  demo: host.demo,
+  thinkingLevel: host.thinkingLevel,
+  settingsPath: host.settingsPath,
+  workdir: host.workdir(),
+  mode: host.mode(),
+  configError: host.configError,
 };
 
 let buffer = "";
+let active = 0;
+let closing = false;
 
 function emit(record: AgentRecord): void {
   process.stdout.write(`${JSON.stringify(record)}\n`);
@@ -43,14 +50,27 @@ function feed(chunk: string): void {
       emit({ type: "log", level: "error", message: `malformed record: ${trimmed.slice(0, 200)}` });
       continue;
     }
-    void handle(request).catch((error: unknown) => {
-      emit({
-        type: "response",
-        id: request.id,
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
+    active += 1;
+    void handle(request)
+      .catch((error: unknown) => {
+        emit({
+          type: "response",
+          id: request.id,
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      })
+      .finally(() => {
+        active -= 1;
+        maybeExit();
       });
-    });
+  }
+}
+
+function maybeExit(): void {
+  if (closing && active === 0) {
+    log("info", "stdin closed, exiting");
+    process.exit(0);
   }
 }
 
@@ -62,7 +82,7 @@ async function handle(request: AgentRequest): Promise<void> {
         type: "response",
         id: request.id,
         ok: true,
-        data: { greeting: `hello ${who}`, runtime: info },
+        data: { greeting: `hello ${who}`, runtime: { ...info, mode: host.mode() } },
       });
       return;
     }
@@ -82,12 +102,57 @@ async function handle(request: AgentRequest): Promise<void> {
         return;
       }
       emit({ type: "response", id: request.id, ok: true, data: { accepted: true } });
-      await host.prompt(text);
+      try {
+        await host.prompt(text);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        log("error", `prompt failed: ${message}`);
+        emit({ type: "event", name: "run_error", data: { message } });
+      }
       return;
     }
     case "abort": {
       await host.abort();
       emit({ type: "response", id: request.id, ok: true, data: { aborted: true } });
+      return;
+    }
+    case "clear": {
+      await host.clear();
+      emit({ type: "response", id: request.id, ok: true, data: { cleared: true } });
+      return;
+    }
+    case "system_prompt": {
+      emit({ type: "response", id: request.id, ok: true, data: host.systemPrompt() });
+      return;
+    }
+    case "system_prompt_save": {
+      emit({
+        type: "response",
+        id: request.id,
+        ok: true,
+        data: host.saveSystemPrompt(request.text ?? ""),
+      });
+      return;
+    }
+    case "cwd": {
+      emit({ type: "response", id: request.id, ok: true, data: { path: host.workdir() } });
+      return;
+    }
+    case "cwd_set": {
+      const next = host.setWorkdir(request.path ?? "");
+      emit({ type: "response", id: request.id, ok: true, data: { path: next } });
+      return;
+    }
+    case "mode_set": {
+      const mode = host.setMode(request.mode ?? "regular");
+      emit({ type: "response", id: request.id, ok: true, data: { mode } });
+      return;
+    }
+    case "decision_answer": {
+      const accepted = request.toolCallId
+        ? host.answerDecision(request.toolCallId, request.answers ?? [])
+        : false;
+      emit({ type: "response", id: request.id, ok: true, data: { accepted } });
       return;
     }
     default: {
@@ -101,37 +166,88 @@ async function handle(request: AgentRequest): Promise<void> {
   }
 }
 
-function projectEvent(event: AgentEvent): { name: string; data: unknown } {
-  if (event.type === "message_update") {
-    const inner = event.assistantMessageEvent;
-    if (inner.type === "text_delta") {
-      return { name: "text_delta", data: { delta: inner.delta } };
+function projectEvent(event: AgentEvent): { name: string; data: unknown } | null {
+  switch (event.type) {
+    case "message_update": {
+      const inner = event.assistantMessageEvent;
+      if (inner.type === "text_delta") {
+        return { name: "text_delta", data: { delta: inner.delta } };
+      }
+      if (inner.type === "thinking_delta") {
+        return null;
+      }
+      return { name: inner.type, data: {} };
     }
-    if (inner.type === "thinking_delta") {
-      return { name: "thinking_delta", data: { delta: inner.delta } };
+    case "message_start":
+      return { name: event.type, data: { role: event.message.role } };
+    case "message_end": {
+      const data: Record<string, unknown> = { role: event.message.role };
+      if (event.message.role === "assistant") {
+        data.stopReason = event.message.stopReason;
+        if (event.message.errorMessage) data.errorMessage = event.message.errorMessage;
+      }
+      return { name: event.type, data };
     }
-    return { name: inner.type, data: {} };
+    case "tool_execution_start":
+      return {
+        name: event.type,
+        data: { toolCallId: event.toolCallId, toolName: event.toolName, args: event.args },
+      };
+    case "tool_execution_update":
+      return {
+        name: event.type,
+        data: {
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          output: summarizeToolResult(event.partialResult),
+        },
+      };
+    case "tool_execution_end":
+      return {
+        name: event.type,
+        data: {
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          isError: event.isError,
+          output: summarizeToolResult(event.result),
+        },
+      };
+    case "agent_end":
+      return { name: event.type, data: {} };
+    default:
+      return { name: event.type, data: {} };
   }
-  if (event.type === "message_end") {
-    return { name: event.type, data: { role: event.message.role } };
-  }
-  if (event.type === "tool_execution_start" || event.type === "tool_execution_end") {
-    return { name: event.type, data: { toolName: event.toolName } };
-  }
-  return { name: event.type, data: {} };
+}
+
+function summarizeToolResult(result: unknown): string {
+  if (!result || typeof result !== "object") return "";
+  const content = (result as { content?: unknown }).content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) => {
+      if (!part || typeof part !== "object") return "";
+      const block = part as { type?: string; text?: string; mimeType?: string };
+      if (block.type === "text") return block.text ?? "";
+      if (block.type === "image") return `[图片 ${block.mimeType ?? "unknown"}]`;
+      return "";
+    })
+    .filter((entry) => entry.length > 0)
+    .join("\n");
 }
 
 function emitEvent(event: AgentEvent): void {
-  const { name, data } = projectEvent(event);
-  emit({ type: "event", name, data });
+  const projection = projectEvent(event);
+  if (!projection) return;
+  emit({ type: "event", name: projection.name, data: projection.data });
 }
 
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", feed);
 process.stdin.on("end", () => {
-  log("info", "stdin closed, exiting");
-  process.exit(0);
+  closing = true;
+  maybeExit();
 });
 
 log("info", `serving the protocol over stdin/stdout as node ${process.version}`);
+if (host.configError) log("error", host.configError);
 emit({ type: "ready", runtime: info });

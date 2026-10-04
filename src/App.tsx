@@ -1,218 +1,153 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { ArrowUpIcon, CircleStopIcon, Loader2Icon } from "lucide-react";
+import { Suspense, lazy, useCallback, useEffect } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { toast } from "sonner";
+import { Composer } from "@/components/chat/composer";
+import { Transcript } from "@/components/chat/transcript";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Toaster } from "@/components/ui/sonner";
-import { agentClient, isTauriRuntime, type AppInfo } from "@/lib/agent/client";
-import type { AgentRuntimeInfo } from "@shared/protocol";
+import { useAgentChat } from "@/hooks/use-agent-chat";
+import { useEditorDocument } from "@/hooks/use-editor-document";
+import { agentClient, isTauriRuntime } from "@/lib/agent/client";
+import { modeLabel } from "@/lib/chat/commands";
 
-type Phase = "idle" | "streaming";
+const EditorPane = lazy(() =>
+  import("@/components/editor/editor-pane").then((module) => ({ default: module.EditorPane })),
+);
 
 export default function App() {
   const client = agentClient();
-  const [appInfo, setAppInfo] = useState<AppInfo | null>(null);
-  const [runtime, setRuntime] = useState<AgentRuntimeInfo | null>(null);
-  const [phase, setPhase] = useState<Phase>("idle");
-  const [prompt, setPrompt] = useState("");
-  const [reply, setReply] = useState("");
-  const [bridgeError, setBridgeError] = useState<string | null>(null);
-  const phaseRef = useRef<Phase>("idle");
+  const {
+    document: editorDocument,
+    open,
+    change,
+    startSaving,
+    markSaved,
+    fail,
+    close,
+  } = useEditorDocument();
 
-  const setPhaseSafe = useCallback((next: Phase) => {
-    phaseRef.current = next;
-    setPhase(next);
-  }, []);
+  const openSystemPrompt = useCallback(() => {
+    void client
+      .systemPrompt()
+      .then((data) => open(fileName(data.path), data.path, data.text))
+      .catch((error: unknown) => toast.error(describe(error)));
+  }, [client, open]);
+
+  const chat = useAgentChat({ onEditSystemPrompt: openSystemPrompt });
+
+  const saveDocument = useCallback(async (): Promise<boolean> => {
+    if (!editorDocument) return false;
+    if (editorDocument.value === editorDocument.savedValue) return true;
+    if (editorDocument.saving) return false;
+    startSaving();
+    try {
+      const data = await client.saveSystemPrompt(editorDocument.value);
+      markSaved(data.text);
+      return true;
+    } catch (error: unknown) {
+      fail(describe(error));
+      return false;
+    }
+  }, [client, editorDocument, fail, markSaved, startSaving]);
 
   useEffect(() => {
-    if (!isTauriRuntime()) {
-      setBridgeError("当前不是 Tauri 运行环境，请用 npm run tauri dev 启动。");
-      return;
-    }
+    if (editorDocument || !isTauriRuntime()) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+      if (event.key.toLowerCase() !== "w") return;
+      event.preventDefault();
+      void getCurrentWindow().close();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [editorDocument]);
 
-    const off = client.onRecord((record) => {
-      if (record.type === "event") {
-        if (record.name === "text_delta") {
-          const data = record.data as { delta?: string };
-          setReply((current) => current + (data.delta ?? ""));
-        }
-        if (record.name === "agent_end") {
-          setPhaseSafe("idle");
-        }
-        return;
-      }
-      if (record.type === "log") {
-        if (record.level === "error") toast.error(record.message);
-        return;
-      }
-      if (record.type === "closed") {
-        setPhaseSafe("idle");
-        setBridgeError(record.reason);
-      }
-    });
-
-    void (async () => {
-      try {
-        await client.connect();
-        await client.waitUntilConnected();
-        const [info, hello] = await Promise.all([
-          invoke<AppInfo>("app_info"),
-          client.hello("world"),
-        ]);
-        setAppInfo(info);
-        setRuntime(hello.runtime);
-        toast.success(hello.greeting);
-      } catch (error) {
-        setBridgeError(error instanceof Error ? error.message : String(error));
-      }
-    })();
-
-    return off;
-  }, [client, setPhaseSafe]);
-
-  const submit = useCallback(async () => {
-    const text = prompt.trim();
-    if (!text || phaseRef.current === "streaming") return;
-    setPrompt("");
-    setReply("");
-    setPhaseSafe("streaming");
-    try {
-      await client.prompt(text);
-    } catch (error) {
-      setPhaseSafe("idle");
-      toast.error(error instanceof Error ? error.message : String(error));
-    }
-  }, [client, prompt, setPhaseSafe]);
-
-  const abort = useCallback(async () => {
-    try {
-      await client.abort();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error));
-    } finally {
-      setPhaseSafe("idle");
-    }
-  }, [client, setPhaseSafe]);
+  const notice = chat.bridgeError ?? chat.configError;
 
   return (
-    <main className="flex min-h-svh flex-col items-center gap-6 bg-background p-8">
-      <header className="flex w-full max-w-3xl flex-col gap-2">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold">agent-runbook</h1>
-          <Badge variant={runtime?.demo ? "secondary" : "default"}>
-            {runtime?.demo ? "demo provider" : "live provider"}
-          </Badge>
-          <Badge variant="outline">
-            {phase === "streaming" ? "streaming" : "idle"}
-          </Badge>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          Tauri 前端 + Rust 宿主 + pi-agent-core sidecar 三层已经打通。
-        </p>
-      </header>
-
-      {bridgeError ? (
-        <Card className="w-full max-w-3xl">
-          <CardHeader>
-            <CardTitle>桥接未就绪</CardTitle>
-            <CardDescription>{bridgeError}</CardDescription>
-          </CardHeader>
-        </Card>
-      ) : null}
-
-      <Card className="w-full max-w-3xl">
-        <CardHeader>
-          <CardTitle>运行环境</CardTitle>
-          <CardDescription>
-            Rust 侧来自 Tauri 命令，agent 侧来自 sidecar 的 hello 记录。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2 text-sm">
-          <Row label="app" value={appInfo ? `${appInfo.name} ${appInfo.version}` : "…"} />
-          <Row label="tauri" value={appInfo?.tauri ?? "…"} />
-          <Row
-            label="host"
-            value={appInfo ? `${appInfo.os}/${appInfo.arch}` : "…"}
+    <>
+      {editorDocument ? (
+        <Suspense
+          fallback={
+            <main className="flex h-svh items-center justify-center text-sm text-muted-foreground">
+              正在打开编辑器…
+            </main>
+          }
+        >
+          <EditorPane
+            fileName={editorDocument.fileName}
+            filePath={editorDocument.filePath}
+            value={editorDocument.value}
+            savedValue={editorDocument.savedValue}
+            saving={editorDocument.saving}
+            error={editorDocument.error}
+            onChange={change}
+            onSave={saveDocument}
+            onClose={close}
           />
-          <Row label="core" value={runtime?.coreVersion ?? "…"} />
-          <Row label="model" value={runtime?.model ?? "…"} />
-          <Row
-            label="sidecar"
-            value={runtime ? `${runtime.runtime} · ${runtime.platform} · protocol v${runtime.protocol}` : "…"}
+        </Suspense>
+      ) : (
+        <main className="flex h-svh flex-col bg-background text-foreground">
+          <header className="shrink-0 border-b">
+            <div className="flex w-full items-center justify-between gap-3 px-4 py-2.5">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="text-sm font-medium">agent-runbook</span>
+                {chat.runtime ? (
+                  <Badge variant="outline" className="font-mono">
+                    {chat.runtime.provider}/{chat.runtime.model}
+                  </Badge>
+                ) : null}
+                <Badge variant={chat.mode === "deliver" ? "default" : "outline"}>
+                  {modeLabel(chat.mode)}
+                </Badge>
+                {chat.runtime ? (
+                  <Badge
+                    variant="outline"
+                    className="min-w-0 max-w-80 truncate font-mono"
+                    title={chat.runtime.workdir}
+                  >
+                    {chat.runtime.workdir}
+                  </Badge>
+                ) : null}
+              </div>
+              <Badge variant={chat.running ? "default" : "secondary"}>
+                {chat.running ? "running" : "idle"}
+              </Badge>
+            </div>
+          </header>
+
+          {notice ? (
+            <div className="shrink-0 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-xs break-words text-destructive">
+              {notice}
+            </div>
+          ) : null}
+
+          <Transcript
+            messages={chat.messages}
+            mode={chat.mode}
+            running={chat.running}
+            runStartedAt={chat.runStartedAt}
+            onDecisionAnswer={chat.answerDecision}
           />
-        </CardContent>
-      </Card>
-
-      <Card className="w-full max-w-3xl">
-        <CardHeader>
-          <CardTitle>Hello world</CardTitle>
-          <CardDescription>
-            prompt 会被 sidecar 里的 Agent 处理，文本增量通过 stdout 流回前端。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="min-h-24 text-sm">
-          {reply ? (
-            <p className="whitespace-pre-wrap">
-              {reply}
-              {phase === "streaming" ? (
-                <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-foreground align-text-bottom" />
-              ) : null}
-            </p>
-          ) : (
-            <p className="text-muted-foreground">还没有回复。</p>
-          )}
-        </CardContent>
-        <CardFooter className="gap-2">
-          <Input
-            value={prompt}
-            placeholder="说点什么，比如 hello world"
-            onChange={(event) => setPrompt(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") void submit();
-            }}
+          <Composer
+            running={chat.running}
+            history={chat.messages
+              .filter((message) => message.role === "user")
+              .map((message) => message.text)}
+            onSend={chat.send}
+            onStop={chat.stop}
           />
-          {phase === "streaming" ? (
-            <Button variant="outline" onClick={() => void abort()}>
-              <CircleStopIcon data-icon="inline-start" />
-              停止
-            </Button>
-          ) : (
-            <Button onClick={() => void submit()} disabled={!prompt.trim()}>
-              <ArrowUpIcon data-icon="inline-start" />
-              发送
-            </Button>
-          )}
-        </CardFooter>
-      </Card>
-
-      {runtime?.demo ? (
-        <p className="w-full max-w-3xl text-xs text-muted-foreground">
-          当前用的是 pi-ai 内置的 faux provider，不需要凭证，回复是脚本化的。
-          接入真实模型的位置在 sidecar/src/agent-host.ts。
-        </p>
-      ) : null}
-
+        </main>
+      )}
       <Toaster />
-      {appInfo ? null : <Loader2Icon className="size-4 animate-spin text-muted-foreground" />}
-    </main>
+    </>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline gap-3">
-      <span className="w-16 shrink-0 text-muted-foreground">{label}</span>
-      <span className="font-mono text-xs break-all">{value}</span>
-    </div>
-  );
+function fileName(filePath: string): string {
+  return filePath.split(/[\\/]/).pop() ?? filePath;
+}
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

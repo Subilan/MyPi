@@ -1,10 +1,39 @@
 export const AGENT_PROTOCOL_VERSION = 1;
 
+export type ChatMode = "regular" | "deliver";
+
+export interface DecisionQuestion {
+  id: string;
+  type: "yes_no" | "single" | "multi";
+  question: string;
+  options?: string[];
+}
+
+export interface DecisionAnswer {
+  id: string;
+  value: string | string[];
+}
+
 export interface AgentRequest {
   id: string;
-  type: "hello" | "prompt" | "abort" | "state";
+  type:
+    | "hello"
+    | "prompt"
+    | "abort"
+    | "state"
+    | "clear"
+    | "system_prompt"
+    | "system_prompt_save"
+    | "cwd"
+    | "cwd_set"
+    | "mode_set"
+    | "decision_answer";
   text?: string;
   name?: string;
+  path?: string;
+  mode?: ChatMode;
+  toolCallId?: string;
+  answers?: DecisionAnswer[];
 }
 
 export interface AgentRuntimeInfo {
@@ -12,8 +41,13 @@ export interface AgentRuntimeInfo {
   runtime: string;
   platform: string;
   coreVersion: string;
+  provider: string;
   model: string;
-  demo: boolean;
+  thinkingLevel: string;
+  settingsPath: string;
+  workdir: string;
+  mode: ChatMode;
+  configError: string | null;
 }
 
 export interface AgentHelloData {
@@ -25,6 +59,64 @@ export interface AgentStateData {
   messageCount: number;
   isStreaming: boolean;
   model: string;
+}
+
+export interface AgentClearData {
+  cleared: boolean;
+}
+
+export interface AgentPromptFileData {
+  path: string;
+  text: string;
+}
+
+export interface AgentCwdData {
+  path: string;
+}
+
+export interface AgentModeData {
+  mode: ChatMode;
+}
+
+export interface AgentDecisionData {
+  accepted: boolean;
+}
+
+export interface AgentMessageStartData {
+  role: string;
+}
+
+export interface AgentMessageEndData {
+  role: string;
+  stopReason?: string;
+  errorMessage?: string;
+}
+
+export interface AgentTextDeltaData {
+  delta: string;
+}
+
+export interface AgentRunErrorData {
+  message: string;
+}
+
+export interface AgentToolStartData {
+  toolCallId: string;
+  toolName: string;
+  args?: unknown;
+}
+
+export interface AgentToolUpdateData {
+  toolCallId: string;
+  toolName: string;
+  output?: string;
+}
+
+export interface AgentToolEndData {
+  toolCallId: string;
+  toolName: string;
+  isError: boolean;
+  output?: string;
 }
 
 export interface AgentStatus {

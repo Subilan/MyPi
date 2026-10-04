@@ -1,11 +1,18 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
+  AgentClearData,
+  AgentCwdData,
+  AgentDecisionData,
   AgentHelloData,
+  AgentModeData,
+  AgentPromptFileData,
   AgentRecord,
   AgentRequest,
   AgentStateData,
   AgentStatus,
+  ChatMode,
+  DecisionAnswer,
 } from "@shared/protocol";
 
 const RECORD_EVENT = "agent://record";
@@ -65,6 +72,34 @@ export class AgentClient {
 
   abort(): Promise<{ aborted: boolean }> {
     return this.#send<{ aborted: boolean }>({ type: "abort" });
+  }
+
+  clear(): Promise<AgentClearData> {
+    return this.#send<AgentClearData>({ type: "clear" });
+  }
+
+  systemPrompt(): Promise<AgentPromptFileData> {
+    return this.#send<AgentPromptFileData>({ type: "system_prompt" });
+  }
+
+  saveSystemPrompt(text: string): Promise<AgentPromptFileData> {
+    return this.#send<AgentPromptFileData>({ type: "system_prompt_save", text });
+  }
+
+  cwd(): Promise<AgentCwdData> {
+    return this.#send<AgentCwdData>({ type: "cwd" });
+  }
+
+  setCwd(path: string): Promise<AgentCwdData> {
+    return this.#send<AgentCwdData>({ type: "cwd_set", path });
+  }
+
+  setMode(mode: ChatMode): Promise<AgentModeData> {
+    return this.#send<AgentModeData>({ type: "mode_set", mode });
+  }
+
+  answerDecision(toolCallId: string, answers: DecisionAnswer[]): Promise<AgentDecisionData> {
+    return this.#send<AgentDecisionData>({ type: "decision_answer", toolCallId, answers });
   }
 
   status(): Promise<AgentStatus> {

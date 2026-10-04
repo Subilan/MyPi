@@ -1,0 +1,106 @@
+import type { ChatMode } from "@shared/protocol";
+
+export type CommandAction =
+  | { type: "clear" }
+  | { type: "system.show" }
+  | { type: "system.edit" }
+  | { type: "cwd.show" }
+  | { type: "cwd.set"; path: string }
+  | { type: "mode.show" }
+  | { type: "mode.set"; mode: ChatMode };
+
+export interface AgentCommand {
+  name: string;
+  aliases: readonly string[];
+  description: string;
+  usage: string;
+}
+
+interface CommandSpec extends AgentCommand {
+  parse(args: string[], raw: string): CommandAction | null;
+}
+
+const SYSTEM_SUBCOMMANDS: readonly { name: string; action: CommandAction }[] = [
+  { name: "edit", action: { type: "system.edit" } },
+];
+
+function parseSystem(args: string[], _raw: string): CommandAction | null {
+  if (args.length === 0) return { type: "system.show" };
+  if (args.length > 1) return null;
+  const name = matchSubcommand(args[0].toLowerCase());
+  return SYSTEM_SUBCOMMANDS.find((entry) => entry.name === name)?.action ?? null;
+}
+
+function matchSubcommand(value: string): string | null {
+  const matches = SYSTEM_SUBCOMMANDS.filter((entry) => entry.name.startsWith(value));
+  return matches.length === 1 ? matches[0].name : null;
+}
+
+const CHAT_MODES: readonly ChatMode[] = ["regular", "deliver"];
+
+export function modeLabel(mode: ChatMode): string {
+  return mode === "deliver" ? "Deliver" : "Regular";
+}
+
+function parseMode(args: string[]): CommandAction | null {
+  if (args.length === 0) return { type: "mode.show" };
+  if (args.length > 1) return null;
+  const value = args[0].toLowerCase();
+  const matches = CHAT_MODES.filter((mode) => mode.startsWith(value));
+  return matches.length === 1 ? { type: "mode.set", mode: matches[0] } : null;
+}
+
+const SPECS: readonly CommandSpec[] = [
+  {
+    name: "clear",
+    aliases: ["new"],
+    description: "清空上下文和聊天记录",
+    usage: "/clear",
+    parse: (args) => (args.length === 0 ? { type: "clear" } : null),
+  },
+  {
+    name: "system",
+    aliases: [],
+    description: "查看或编辑系统提示词",
+    usage: "/system [edit]",
+    parse: parseSystem,
+  },
+  {
+    name: "cd",
+    aliases: [],
+    description: "查看或切换 agent 的工作目录",
+    usage: "/cd [path]",
+    parse: (args, raw) =>
+      args.length === 0 ? { type: "cwd.show" } : { type: "cwd.set", path: unquote(raw) },
+  },
+  {
+    name: "mode",
+    aliases: [],
+    description: "查看或切换 regular / deliver 模式",
+    usage: "/mode [regular|deliver]",
+    parse: parseMode,
+  },
+];
+
+const INDEX = new Map<string, CommandSpec>();
+for (const spec of SPECS) {
+  INDEX.set(spec.name, spec);
+  for (const alias of spec.aliases) INDEX.set(alias, spec);
+}
+
+export const COMMANDS: readonly AgentCommand[] = SPECS;
+
+export function parseCommand(input: string): CommandAction | null {
+  const trimmed = input.trim();
+  const match = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(trimmed);
+  if (!match) return null;
+  const spec = INDEX.get(match[1].toLowerCase());
+  if (!spec) return null;
+  const raw = (match[2] ?? "").trim();
+  return spec.parse(raw ? raw.split(/\s+/) : [], raw);
+}
+
+function unquote(value: string): string {
+  const match = /^"([\s\S]*)"$/.exec(value.trim());
+  return match ? match[1] : value.trim();
+}

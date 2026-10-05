@@ -163,7 +163,7 @@ function MessageBody({
   if (message.role === "notice") {
     return (
       <div className="bg-sky-50 px-4 py-3 text-[15px] leading-7 text-sky-900 dark:bg-sky-950/40 dark:text-sky-100">
-        <p className="text-xs font-semibold text-sky-700/80 dark:text-sky-300/80">{message.title}</p>
+        <p className="font-semibold">{message.title}</p>
         {message.text ? <p className="mt-1 whitespace-pre-wrap">{message.text}</p> : null}
         {message.error ? <p className="mt-2 text-destructive">{message.error}</p> : null}
       </div>

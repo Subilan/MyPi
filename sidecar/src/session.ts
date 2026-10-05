@@ -36,6 +36,7 @@ type StoredRecord =
   | { kind: "assistant"; at: number; message: AgentMessage }
   | { kind: "tool"; at: number; message: AgentMessage }
   | { kind: "delta_mismatch"; at: number; delta: string; final: string }
+  | { kind: "delta_orphan"; at: number; delta: string }
   | { kind: "error"; at: number; text: string }
   | { kind: "mode"; at: number; mode: ChatMode }
   | { kind: "workdir"; at: number; path: string };
@@ -114,8 +115,15 @@ export class SessionStore {
       }
       case "message_update": {
         const inner = event.assistantMessageEvent;
-        if (inner.type === "text_delta" && this.#pendingText !== null) {
-          this.#pendingText += inner.delta;
+        if (inner.type === "text_delta") {
+          if (this.#pendingText === null) {
+            this.#write({ kind: "delta_orphan", at: Date.now(), delta: inner.delta });
+            process.stderr.write(
+              "[sidecar] warn: 收到不在任何消息内的 text_delta（可能发生在 message_end 之后），已记入会话\n",
+            );
+          } else {
+            this.#pendingText += inner.delta;
+          }
         }
         return;
       }
@@ -242,6 +250,14 @@ export class SessionStore {
             text: ["流式文本与最终文本不一致。", "", "delta：", record.delta, "", "final：", record.final].join(
               "\n",
             ),
+          });
+          break;
+        case "delta_orphan":
+          entries.push({
+            role: "notice",
+            at: record.at,
+            title: "ORPHAN DELTA",
+            text: `收到不在任何消息内的 text_delta：\n${record.delta}`,
           });
           break;
         case "mode":

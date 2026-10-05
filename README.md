@@ -139,7 +139,7 @@ agent 的回复走 `src/components/chat/markdown.tsx`，用 react-markdown 渲�
 
 会话由 sidecar 记录，一个会话一个 JSONL 文件，存在 `~/.agent-runbook/sessions/`（`AGENT_RUNBOOK_SESSIONS` 可改目录）。文件名就是会话 id，形如 `20260205-102231-a1b2`，前缀是本地时间，末尾四位随机数避免同一秒重名；里面的时间戳是 epoch 毫秒，所以 `/sessions` 里的顺序按 id 倒序排。每个文件的第一行是会话头，记下 id、开始时间、模式、工作目录、provider 与 model。之后每行一条记录，存的是 agent 侧真实的消息对象：用户消息、assistant 消息（去掉 thinking 部分）、tool result，另有运行错误与模式、工作目录的变更。assistant 的思考内容不落盘，文件权限 0600。
 
-sidecar 会把 `text_delta` 拼起来与 `message_end` 带来的最终文本核对，不一致时额外写一条 `delta_mismatch` 记录（两份文本都留下）并在 stderr 打一条 warn；`/sessions` 回看时会把它显示成一条 `DELTA MISMATCH` 通知。这条记录是给偶发渲染异常用的证据，正常会话不会出现。
+sidecar 会把 `text_delta` 拼起来与 `message_end` 带来的最终文本核对，不一致时额外写一条 `delta_mismatch` 记录（两份文本都留下）；若 `text_delta` 落在任何消息之外（例如 `message_end` 之后才到），会写一条 `delta_orphan` 记录。两种情况都会在 stderr 打一条 warn，`/sessions` 回看时显示成 `DELTA MISMATCH` / `ORPHAN DELTA` 通知。这两条记录是给偶发渲染异常用的证据，正常会话不会出现。
 
 每条会话的聊天记录与模型上下文都从这份文件重建，所以会话之间完全独立：在 A 里聊到一半切到 B，A 的文件不动；切回 A 时历史照旧，接着发消息就追加在 A 的同一份文件里。切换时 sidecar 按消息里的 `toolCall` / `toolResult` 配对校验历史，把当前模式不支持的工具调用、以及缺少配对结果的残缺调用剔掉，再把工具集与系统提示词按当前配置重建，避免模型看到不存在的工具或悬空的工具结果；会话记录的模式会跟着恢复，但系统提示词与工作目录仍用当前配置。
 

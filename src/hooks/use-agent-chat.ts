@@ -68,6 +68,7 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
   const requestedModeRef = useRef<ChatMode | null>(null);
   const counterRef = useRef(0);
   const assistantIdRef = useRef<string | null>(null);
+  const lastFinalTextRef = useRef<string | null>(null);
   const editSystemPromptRef = useRef(options.onEditSystemPrompt);
   editSystemPromptRef.current = options.onEditSystemPrompt;
 
@@ -208,7 +209,7 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
             if (!drop) next.push(patched);
             return;
           }
-          if (separated) next.push(entry);
+          if (separated || text === undefined) next.push(entry);
         });
         return [...head, ...next];
       });
@@ -254,6 +255,7 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
             }),
             typeof end.text === "string" ? end.text : undefined,
           );
+          if (typeof end.text === "string") lastFinalTextRef.current = end.text;
           if (end.stopReason === "aborted") reportAbort();
           return;
         }
@@ -334,6 +336,14 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
           setRunStartedAt(null);
           clearWaiting();
           stopStreaming();
+          const finalText = lastFinalTextRef.current;
+          lastFinalTextRef.current = null;
+          if (finalText !== null) {
+            finishAssistant(
+              (message) => ({ ...message, streaming: false, thinking: false }),
+              finalText,
+            );
+          }
           if (abortingRef.current) reportAbort();
           abortingRef.current = false;
           return;
@@ -623,6 +633,7 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
         error: null,
       };
       assistantIdRef.current = assistantId;
+      lastFinalTextRef.current = null;
       setRunningSafe(true);
       setRunStartedAt(now);
       runBaseRef.current = now;

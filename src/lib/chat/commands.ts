@@ -10,7 +10,8 @@ export type CommandAction =
   | { type: "mode.show" }
   | { type: "mode.set"; mode: ChatMode }
   | { type: "sessions.list" }
-  | { type: "sessions.switch"; target: string };
+  | { type: "sessions.switch"; target: string }
+  | { type: "jump" };
 
 export interface AgentCommand {
   name: string;
@@ -100,6 +101,13 @@ const SPECS: readonly CommandSpec[] = [
       if (args.length === 1) return { type: "sessions.switch", target: args[0] };
       return null;
     },
+  },
+  {
+    name: "jump",
+    aliases: [],
+    description: "进入跳转视图，在当前会话的消息树里回溯或切换分支",
+    usage: "/jump",
+    parse: (args) => (args.length === 0 ? { type: "jump" } : null),
   },
 ];
 

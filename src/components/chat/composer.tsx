@@ -19,12 +19,14 @@ export function Composer({
   running,
   locked,
   history,
+  seed,
   onSend,
   onStop,
 }: {
   running: boolean;
   locked: boolean;
   history: string[];
+  seed?: { text: string; nonce: number } | null;
   onSend: (text: string) => void;
   onStop: () => void;
 }) {
@@ -44,6 +46,16 @@ export function Composer({
   useEffect(() => {
     draftRef.current = draft;
   }, [draft]);
+
+  const seedNonceRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!seed || seed.nonce === seedNonceRef.current) return;
+    seedNonceRef.current = seed.nonce;
+    caretToEndRef.current = true;
+    setDraft(seed.text);
+    setHistoryIndex(null);
+    textareaRef.current?.focus({ preventScroll: true });
+  }, [seed]);
 
   useEffect(() => {
     const focusComposer = () => textareaRef.current?.focus({ preventScroll: true });

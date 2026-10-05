@@ -44,6 +44,8 @@ export interface AgentHost {
   sessionsDir(): string;
   sessions(): AgentSessionSummary[];
   switchSession(id: string): Promise<AgentSessionData>;
+  tree(): AgentSessionData;
+  jump(nodeId: string): Promise<AgentSessionData>;
   recordError(message: string): void;
 }
 
@@ -108,10 +110,17 @@ export function createAgentHost(onEvent: (event: AgentEvent) => void): AgentHost
       },
       answerDecision: () => false,
       snapshot: () => ({ messageCount: 0, isStreaming: false }),
+      tree: () => {
+        const { summary, nodes, head } = store.read(store.id);
+        return { summary, nodes, head };
+      },
+      jump: async () => {
+        throw new Error(configError);
+      },
       switchSession: async (id: string) => {
-        const { summary, entries } = store.read(id);
+        const { summary, nodes, head } = store.read(id);
         store.resume(id);
-        return { summary, entries };
+        return { summary, nodes, head };
       },
     };
   };
@@ -229,14 +238,29 @@ export function createAgentHost(onEvent: (event: AgentEvent) => void): AgentHost
     answerDecision(toolCallId: string, answers: DecisionAnswer[]) {
       return decisions.answer(toolCallId, answers);
     },
+    tree() {
+      const { summary, nodes, head } = store.read(store.id);
+      return { summary, nodes, head };
+    },
+    async jump(nodeId: string) {
+      const { nodes } = store.read(store.id);
+      const node = nodes.find((entry) => entry.id === nodeId);
+      if (!node) throw new Error(`找不到消息 ${nodeId}`);
+      agent.abort();
+      await agent.waitForIdle();
+      store.setHead(node.role === "user" ? node.parent : node.id);
+      const { summary, nodes: nextNodes, head, history } = store.read(store.id);
+      rebuild(promptText, history);
+      return { summary, nodes: nextNodes, head };
+    },
     async switchSession(id: string) {
-      const { summary, entries, history } = store.read(id);
+      const { summary, nodes, head, history } = store.read(id);
       agent.abort();
       await agent.waitForIdle();
       store.resume(id);
       mode = summary.mode;
       rebuild(promptText, history);
-      return { summary, entries };
+      return { summary, nodes, head };
     },
     async prompt(text: string) {
       forcedContinues = 0;

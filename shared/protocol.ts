@@ -35,7 +35,9 @@ export interface AgentRequest {
     | "mode_set"
     | "decision_answer"
     | "session_list"
-    | "session_switch";
+    | "session_switch"
+    | "session_tree"
+    | "session_jump";
   text?: string;
   name?: string;
   path?: string;
@@ -43,6 +45,7 @@ export interface AgentRequest {
   toolCallId?: string;
   answers?: DecisionAnswer[];
   sessionId?: string;
+  nodeId?: string;
 }
 
 export interface AgentRuntimeInfo {
@@ -94,25 +97,33 @@ export interface AgentSessionListData {
   sessions: AgentSessionSummary[];
 }
 
-export type AgentSessionEntry =
-  | { role: "user"; at: number; text: string }
-  | { role: "assistant"; at: number; text: string; stopReason?: string; error: string | null }
-  | {
-      role: "tool";
-      at: number;
-      toolCallId: string;
-      name: string;
-      args?: unknown;
-      isError: boolean;
-      output: string;
-      durationMs?: number;
-    }
-  | { role: "error"; at: number; text: string }
-  | { role: "notice"; at: number; title: string; text: string };
+export interface SessionNodeBase {
+  id: string;
+  parent: string | null;
+}
+
+export type AgentSessionEntry = SessionNodeBase &
+  (
+    | { role: "user"; at: number; text: string }
+    | { role: "assistant"; at: number; text: string; stopReason?: string; error: string | null }
+    | {
+        role: "tool";
+        at: number;
+        toolCallId: string;
+        name: string;
+        args?: unknown;
+        isError: boolean;
+        output: string;
+        durationMs?: number;
+      }
+    | { role: "error"; at: number; text: string }
+    | { role: "notice"; at: number; title: string; text: string }
+  );
 
 export interface AgentSessionData {
   summary: AgentSessionSummary;
-  entries: AgentSessionEntry[];
+  nodes: AgentSessionEntry[];
+  head: string | null;
 }
 
 export interface AgentPromptFileData {

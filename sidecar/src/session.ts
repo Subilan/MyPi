@@ -23,6 +23,7 @@ export function resolveSessionsDir(): string {
 interface SessionHeader {
   kind: "session";
   id: string;
+  parent?: string | null;
   at: number;
   mode: ChatMode;
   workdir: string;
@@ -30,14 +31,19 @@ interface SessionHeader {
   model: string;
 }
 
+interface NodeFields {
+  id?: string;
+  parent?: string | null;
+}
+
 type StoredRecord =
   | SessionHeader
-  | { kind: "user"; at: number; message: AgentMessage }
-  | { kind: "assistant"; at: number; message: AgentMessage }
-  | { kind: "tool"; at: number; message: AgentMessage; durationMs?: number }
-  | { kind: "error"; at: number; text: string }
-  | { kind: "mode"; at: number; mode: ChatMode }
-  | { kind: "workdir"; at: number; path: string };
+  | ({ kind: "user"; at: number; message: AgentMessage } & NodeFields)
+  | ({ kind: "assistant"; at: number; message: AgentMessage } & NodeFields)
+  | ({ kind: "tool"; at: number; message: AgentMessage; durationMs?: number } & NodeFields)
+  | ({ kind: "error"; at: number; text: string } & NodeFields)
+  | ({ kind: "mode"; at: number; mode: ChatMode } & NodeFields)
+  | ({ kind: "workdir"; at: number; path: string } & NodeFields);
 
 export interface SessionMeta {
   mode: ChatMode;
@@ -56,6 +62,8 @@ export class SessionStore {
   #meta: SessionMeta | null = null;
   #started = false;
   #warned = false;
+  #lines = 0;
+  #head: string | null = null;
   #toolStartedAt = new Map<string, number>();
   #toolDurations = new Map<string, number>();
 
@@ -80,6 +88,8 @@ export class SessionStore {
     this.#id = newSessionId();
     this.#meta = { ...meta };
     this.#started = false;
+    this.#lines = 0;
+    this.#head = null;
     this.#toolStartedAt.clear();
     this.#toolDurations.clear();
   }
@@ -90,17 +100,32 @@ export class SessionStore {
       if (id === this.#id) return;
       throw new Error(`找不到会话 ${id}`);
     }
+    const records = withIds(this.#read(this.file(id)));
     this.#id = id;
     this.#meta = null;
     this.#started = true;
+    this.#lines = records.length;
+    this.#head = lastNodeId(records);
     this.#toolStartedAt.clear();
     this.#toolDurations.clear();
+  }
+
+  setHead(id: string | null): void {
+    if (id === null) {
+      this.#head = null;
+      return;
+    }
+    const records = withIds(this.#read(this.file()));
+    if (!records.some((record) => record.kind !== "session" && record.id === id)) {
+      throw new Error(`找不到消息 ${id}`);
+    }
+    this.#head = id;
   }
 
   user(text: string): void {
     if (!text) return;
     const at = Date.now();
-    this.#write({
+    this.#append({
       kind: "user",
       at,
       message: { role: "user", content: [{ type: "text", text }], timestamp: at },
@@ -114,7 +139,7 @@ export class SessionStore {
         const message = event.message;
         const content = message.content.filter((part) => part.type !== "thinking");
         if (content.length === 0 && !message.errorMessage) return;
-        this.#write({
+        this.#append({
           kind: "assistant",
           at: message.timestamp,
           message: { ...message, content },
@@ -137,7 +162,7 @@ export class SessionStore {
         for (const result of event.toolResults) {
           const durationMs = this.#toolDurations.get(result.toolCallId);
           this.#toolDurations.delete(result.toolCallId);
-          this.#write({ kind: "tool", at: result.timestamp, message: result, durationMs });
+          this.#append({ kind: "tool", at: result.timestamp, message: result, durationMs });
         }
         return;
       }
@@ -148,15 +173,15 @@ export class SessionStore {
 
   error(text: string): void {
     if (!text) return;
-    this.#write({ kind: "error", at: Date.now(), text });
+    this.#append({ kind: "error", at: Date.now(), text });
   }
 
   mode(mode: ChatMode): void {
-    this.#write({ kind: "mode", at: Date.now(), mode });
+    this.#append({ kind: "mode", at: Date.now(), mode });
   }
 
   workdir(target: string): void {
-    this.#write({ kind: "workdir", at: Date.now(), path: target });
+    this.#append({ kind: "workdir", at: Date.now(), path: target });
   }
 
   list(): AgentSessionSummary[] {
@@ -173,74 +198,35 @@ export class SessionStore {
     return [current, ...summaries.filter((entry) => entry.id !== current.id)];
   }
 
-  read(id: string): SessionData {
+  read(id: string = this.#id): SessionData {
     if (!ID_PATTERN.test(id)) throw new Error(`非法的会话 id：${id}`);
     const file = this.file(id);
     if (!existsSync(file)) {
-      if (id === this.#id) return { summary: this.#currentSummary(), entries: [], history: [] };
+      if (id === this.#id) {
+        return { summary: this.#currentSummary(), nodes: [], head: null, history: [] };
+      }
       throw new Error(`找不到会话 ${id}`);
     }
-    const records = this.#parse(file);
-    const entries: AgentSessionEntry[] = [];
-    const history: AgentMessage[] = [];
+    const records = withIds(this.#read(file));
+    const nodes: AgentSessionEntry[] = [];
+    const messages = new Map<string, AgentMessage>();
+    const parents = new Map<string, string | null>();
     const argsByCall = new Map<string, unknown>();
     for (const record of records) {
-      switch (record.kind) {
-        case "user": {
-          if (record.message.role === "user") {
-            entries.push({ role: "user", at: record.at, text: messageText(record.message) });
-            history.push(record.message);
-          }
-          break;
-        }
-        case "assistant": {
-          const message = record.message;
-          if (message.role === "assistant") {
-            for (const part of message.content) {
-              if (part.type === "toolCall") argsByCall.set(part.id, part.arguments);
-            }
-            entries.push({
-              role: "assistant",
-              at: record.at,
-              text: messageText(message),
-              stopReason: message.stopReason,
-              error: message.errorMessage ?? null,
-            });
-            history.push(message);
-          }
-          break;
-        }
-        case "tool": {
-          const message = record.message;
-          if (message.role === "toolResult") {
-            entries.push({
-              role: "tool",
-              at: record.at,
-              toolCallId: message.toolCallId,
-              name: message.toolName,
-              args: argsByCall.get(message.toolCallId),
-              isError: message.isError,
-              output: messageText(message, true),
-              durationMs: record.durationMs,
-            });
-            history.push(message);
-          }
-          break;
-        }
-        case "error":
-          entries.push({ role: "error", at: record.at, text: record.text });
-          break;
-        case "mode":
-          entries.push({ role: "notice", at: record.at, title: "MODE", text: record.mode });
-          break;
-        case "workdir":
-          entries.push({ role: "notice", at: record.at, title: "CWD", text: record.path });
-          break;
-        default:
-          break;
-      }
+      if (record.kind === "session") continue;
+      const entry = toEntry(record, argsByCall);
+      if (!entry) continue;
+      nodes.push(entry);
+      parents.set(entry.id, entry.parent);
+      if ("message" in record) messages.set(entry.id, record.message);
     }
-    return { summary: this.#summarize(id, records), entries, history };
+    const head = id === this.#id ? this.#head : lastNodeId(records);
+    return {
+      summary: this.#summarize(id, records),
+      nodes,
+      head,
+      history: collectHistory(head, messages, parents),
+    };
   }
 
   #files(): string[] {
@@ -255,7 +241,7 @@ export class SessionStore {
     }
   }
 
-  #parse(file: string): StoredRecord[] {
+  #read(file: string): StoredRecord[] {
     return readFileSync(file, "utf8")
       .split("\n")
       .flatMap((line) => {
@@ -271,7 +257,7 @@ export class SessionStore {
 
   #summarize(id: string, records?: StoredRecord[]): AgentSessionSummary {
     const file = this.file(id);
-    const parsed = records ?? this.#parse(file);
+    const parsed = records ?? withIds(this.#read(file));
     const header = parsed.find((record): record is SessionHeader => record.kind === "session");
     let mode = header?.mode ?? "regular";
     let userMessages = 0;
@@ -322,26 +308,134 @@ export class SessionStore {
     };
   }
 
-  #write(record: StoredRecord): void {
+  #append(record: StoredRecord): void {
     if (!this.#started) {
       const meta = this.#meta;
-      if (meta) this.#emit({ kind: "session", id: this.#id, at: Date.now(), ...meta });
+      if (meta) this.#emitLine({ kind: "session", id: this.#id, at: Date.now(), ...meta });
+      this.#started = true;
     }
-    this.#emit(record);
+    const id = `line${this.#lines}`;
+    const next = { ...record, id, parent: this.#head } as StoredRecord;
+    if (!this.#emitLine(next)) return;
+    this.#head = id;
   }
 
-  #emit(record: StoredRecord): void {
+  #emitLine(record: StoredRecord): boolean {
     try {
       mkdirSync(this.#dir, { recursive: true });
       appendFileSync(this.file(), `${JSON.stringify(record)}\n`, { mode: 0o600 });
-      this.#started = true;
+      this.#lines += 1;
+      return true;
     } catch (error) {
-      if (this.#warned) return;
+      if (this.#warned) return false;
       this.#warned = true;
       const message = error instanceof Error ? error.message : String(error);
       process.stderr.write(`[sidecar] warn: 会话记录写入失败（${message}），本次运行不再重试\n`);
+      return false;
     }
   }
+}
+
+function withIds(records: StoredRecord[]): StoredRecord[] {
+  const out: StoredRecord[] = [];
+  let previous: string | null = null;
+  records.forEach((record, index) => {
+    const fallback = `line${index}`;
+    const id =
+      record.kind === "session"
+        ? fallback
+        : typeof record.id === "string"
+          ? record.id
+          : fallback;
+    let parent: string | null;
+    if (Object.prototype.hasOwnProperty.call(record, "parent")) {
+      parent = record.parent ?? null;
+    } else {
+      parent = record.kind === "session" ? null : previous;
+    }
+    out.push({ ...record, id, parent });
+    if (record.kind !== "session") previous = id;
+  });
+  return out;
+}
+
+function lastNodeId(records: StoredRecord[]): string | null {
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    const record = records[index];
+    if (record.kind !== "session") return record.id ?? null;
+  }
+  return null;
+}
+
+function toEntry(
+  record: StoredRecord,
+  argsByCall: Map<string, unknown>,
+): AgentSessionEntry | null {
+  const id = record.id ?? "";
+  const parent = record.parent ?? null;
+  switch (record.kind) {
+    case "user": {
+      if (record.message.role !== "user") return null;
+      return { id, parent, role: "user", at: record.at, text: messageText(record.message) };
+    }
+    case "assistant": {
+      const message = record.message;
+      if (message.role !== "assistant") return null;
+      for (const part of message.content) {
+        if (part.type === "toolCall") argsByCall.set(part.id, part.arguments);
+      }
+      return {
+        id,
+        parent,
+        role: "assistant",
+        at: record.at,
+        text: messageText(message),
+        stopReason: message.stopReason,
+        error: message.errorMessage ?? null,
+      };
+    }
+    case "tool": {
+      const message = record.message;
+      if (message.role !== "toolResult") return null;
+      return {
+        id,
+        parent,
+        role: "tool",
+        at: record.at,
+        toolCallId: message.toolCallId,
+        name: message.toolName,
+        args: argsByCall.get(message.toolCallId),
+        isError: message.isError,
+        output: messageText(message, true),
+        durationMs: record.durationMs,
+      };
+    }
+    case "error":
+      return { id, parent, role: "error", at: record.at, text: record.text };
+    case "mode":
+      return { id, parent, role: "notice", at: record.at, title: "MODE", text: record.mode };
+    case "workdir":
+      return { id, parent, role: "notice", at: record.at, title: "CWD", text: record.path };
+    default:
+      return null;
+  }
+}
+
+function collectHistory(
+  head: string | null,
+  messages: Map<string, AgentMessage>,
+  parents: Map<string, string | null>,
+): AgentMessage[] {
+  const chain: AgentMessage[] = [];
+  const seen = new Set<string>();
+  let cursor = head;
+  while (cursor && !seen.has(cursor)) {
+    seen.add(cursor);
+    const message = messages.get(cursor);
+    if (message) chain.push(message);
+    cursor = parents.get(cursor) ?? null;
+  }
+  return chain.reverse();
 }
 
 function newSessionId(now: Date = new Date()): string {

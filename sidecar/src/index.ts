@@ -152,6 +152,19 @@ async function handle(request: AgentRequest): Promise<void> {
       });
       return;
     }
+    case "session_tree": {
+      emit({ type: "response", id: request.id, ok: true, data: host.tree() });
+      return;
+    }
+    case "session_jump": {
+      emit({
+        type: "response",
+        id: request.id,
+        ok: true,
+        data: await host.jump(request.nodeId ?? ""),
+      });
+      return;
+    }
     case "system_prompt": {
       emit({ type: "response", id: request.id, ok: true, data: host.systemPrompt() });
       return;

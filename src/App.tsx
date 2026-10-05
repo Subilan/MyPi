@@ -2,6 +2,7 @@ import { Suspense, lazy, useCallback, useEffect } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { toast } from "sonner";
 import { Composer } from "@/components/chat/composer";
+import { JumpView } from "@/components/chat/jump-view";
 import { Transcript } from "@/components/chat/transcript";
 import { SessionsPane } from "@/components/sessions/sessions-pane";
 import { Toaster } from "@/components/ui/sonner";
@@ -91,6 +92,13 @@ export default function App() {
           onSelect={chat.switchSession}
           onClose={chat.closeSessionBrowser}
         />
+      ) : chat.jumpTree ? (
+        <JumpView
+          tree={chat.jumpTree}
+          mode={chat.mode}
+          onCommit={chat.commitJump}
+          onCancel={chat.closeJumpView}
+        />
       ) : (
         <main className="flex h-svh flex-col bg-background text-foreground">
           {notice ? (
@@ -111,6 +119,7 @@ export default function App() {
           <Composer
             running={chat.running}
             locked={chat.confirmPending}
+            seed={chat.composerSeed}
             history={chat.messages
               .filter((message) => message.role === "user")
               .map((message) => message.text)}

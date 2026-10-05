@@ -112,6 +112,14 @@ export class AgentClient {
     return this.#send<AgentSessionData>({ type: "session_switch", sessionId });
   }
 
+  sessionTree(): Promise<AgentSessionData> {
+    return this.#send<AgentSessionData>({ type: "session_tree" });
+  }
+
+  sessionJump(nodeId: string): Promise<AgentSessionData> {
+    return this.#send<AgentSessionData>({ type: "session_jump", nodeId });
+  }
+
   status(): Promise<AgentStatus> {
     return invoke<AgentStatus>("agent_status");
   }

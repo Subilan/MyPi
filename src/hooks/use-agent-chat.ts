@@ -2,6 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { agentClient, isTauriRuntime } from "@/lib/agent/client";
 import { modeLabel, parseCommand, type CommandAction } from "@/lib/chat/commands";
+import {
+  buildTree,
+  pathEntries,
+  toSessionMessages,
+  type ChatTree,
+} from "@/lib/chat/tree";
 import type {
   AssistantMessage,
   ChatMessage,
@@ -17,7 +23,6 @@ import type {
   AgentMessageStartData,
   AgentRunErrorData,
   AgentRuntimeInfo,
-  AgentSessionEntry,
   AgentSessionSummary,
   AgentToolEndData,
   AgentToolStartData,
@@ -54,6 +59,11 @@ export interface AgentChat {
   sessionBrowser: SessionBrowserState | null;
   closeSessionBrowser(): void;
   switchSession(target: string): Promise<void>;
+  jumpTree: ChatTree | null;
+  composerSeed: { text: string; nonce: number } | null;
+  openJumpView(): void;
+  closeJumpView(): void;
+  commitJump(nodeId: string): void;
 }
 
 const DECISION_TOOL = "request_user_decision";
@@ -69,6 +79,8 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
   const [bridgeError, setBridgeError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionBrowser, setSessionBrowser] = useState<SessionBrowserState | null>(null);
+  const [jumpTree, setJumpTree] = useState<ChatTree | null>(null);
+  const [composerSeed, setComposerSeed] = useState<{ text: string; nonce: number } | null>(null);
 
   const runningRef = useRef(false);
   const runBaseRef = useRef<number | null>(null);
@@ -413,8 +425,9 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
       setRunningSafe(false);
       setRunStartedAt(null);
       clearWaiting();
+      const tree = buildTree(data.nodes, data.head);
       setMessages([
-        ...toSessionMessages(data.entries),
+        ...toSessionMessages(pathEntries(tree, data.head)),
         {
           id: `send-${(counterRef.current += 1)}`,
           role: "notice",
@@ -434,8 +447,50 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
           : current,
       );
       setSessionBrowser(null);
+      setJumpTree(null);
+      setComposerSeed(null);
     },
     [clearWaiting, client, loadSessionList, setRunningSafe],
+  );
+
+  const openJumpView = useCallback(() => {
+    if (runningRef.current || requestedModeRef.current !== null) return;
+    client
+      .sessionTree()
+      .then((data) => setJumpTree(buildTree(data.nodes, data.head)))
+      .catch((error: unknown) => appendError(describe(error)));
+  }, [appendError, client]);
+
+  const closeJumpView = useCallback(() => setJumpTree(null), []);
+
+  const commitJump = useCallback(
+    (nodeId: string) => {
+      client
+        .sessionJump(nodeId)
+        .then((data) => {
+          assistantIdRef.current = null;
+          setRunningSafe(false);
+          setRunStartedAt(null);
+          clearWaiting();
+          const tree = buildTree(data.nodes, data.head);
+          const target = tree.byId.get(nodeId)?.entry;
+          setMessages(toSessionMessages(pathEntries(tree, data.head)));
+          setJumpTree(null);
+          if (target && target.role === "user") {
+            setComposerSeed((current) => ({
+              text: target.text,
+              nonce: (current?.nonce ?? 0) + 1,
+            }));
+          } else {
+            setComposerSeed(null);
+          }
+        })
+        .catch((error: unknown) => {
+          setJumpTree(null);
+          appendError(describe(error));
+        });
+    },
+    [appendError, clearWaiting, client, setRunningSafe],
   );
 
   const runCommand = useCallback(
@@ -501,6 +556,13 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
         case "sessions.switch":
           switchSession(action.target).catch(failed);
           return;
+        case "jump":
+          if (runningRef.current || requestedModeRef.current !== null) {
+            appendError("当前有正在运行或待确认的操作，完成后再跳转");
+            return;
+          }
+          openJumpView();
+          return;
         case "mode.show":
           appendNotice({
             title: "MODE",
@@ -536,6 +598,7 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
       clearWaiting,
       client,
       mode,
+      openJumpView,
       openSessionBrowser,
       running,
       runtime,
@@ -687,6 +750,11 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
     sessionBrowser,
     closeSessionBrowser,
     switchSession,
+    jumpTree,
+    composerSeed,
+    openJumpView,
+    closeJumpView,
+    commitJump,
   };
 }
 
@@ -733,61 +801,6 @@ function resolveSession(
   if (exact) return exact;
   const prefix = sessions.filter((session) => session.id.startsWith(trimmed));
   return prefix.length === 1 ? prefix[0] : null;
-}
-
-function toSessionMessages(entries: AgentSessionEntry[]): ChatMessage[] {
-  return entries
-    .filter(
-      (entry) => entry.role !== "assistant" || entry.text.length > 0 || entry.error !== null,
-    )
-    .map((entry, index): ChatMessage => {
-      switch (entry.role) {
-        case "user":
-          return {
-            id: `history-${index}`,
-            role: "user",
-            text: entry.text,
-            createdAt: entry.at,
-            startedAt: entry.at,
-          };
-        case "assistant":
-          return {
-            id: `history-${index}`,
-            role: "assistant",
-            text: entry.text,
-            createdAt: entry.at,
-            startedAt: entry.at,
-            streaming: false,
-            thinking: false,
-            error: entry.error,
-          };
-        case "tool":
-          return {
-            id: `tool:${entry.toolCallId}`,
-            role: "tool",
-            toolCallId: entry.toolCallId,
-            name: entry.name,
-            args: entry.args,
-            status: entry.isError ? "error" : "ok",
-            output: entry.output,
-            createdAt: entry.at,
-            startedAt: entry.durationMs !== undefined ? entry.at - entry.durationMs : entry.at,
-            finishedAt: entry.durationMs !== undefined ? entry.at : null,
-            error: entry.isError ? entry.output || "工具执行失败" : null,
-          };
-        case "error":
-          return { id: `history-${index}`, role: "error", text: entry.text, createdAt: entry.at };
-        case "notice":
-          return {
-            id: `history-${index}`,
-            role: "notice",
-            title: entry.title,
-            text: entry.text,
-            createdAt: entry.at,
-            error: null,
-          };
-      }
-    });
 }
 
 const sessionTimeFormatter = new Intl.DateTimeFormat(undefined, {

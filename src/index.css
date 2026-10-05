@@ -133,3 +133,24 @@
   overflow-y: hidden;
   padding-block: 0.25rem;
 }
+.jump-selected,
+.jump-selected * {
+  background-color: #ffff00 !important;
+  color: #000000 !important;
+  border-color: #000000 !important;
+}
+.jump-selected {
+  z-index: 1;
+  animation: jump-pop 260ms ease-out;
+}
+@keyframes jump-pop {
+  0% {
+    transform: scale(0.985);
+  }
+  45% {
+    transform: scale(1.015);
+  }
+  100% {
+    transform: scale(1);
+  }
+}

@@ -18,7 +18,7 @@ const DELIVER_TOOLS = new Set(["report_success", "report_failure", "request_user
 
 const ERROR_BLOCK = "bg-red-50 text-red-900 dark:bg-red-950/40 dark:text-red-100";
 
-const TOOL_STYLES: Record<"running" | "ok" | "error", string> = {
+export const TOOL_STYLES: Record<"running" | "ok" | "error", string> = {
   running: "bg-sky-50 text-sky-900 dark:bg-sky-950/40 dark:text-sky-100",
   ok: "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100",
   error: ERROR_BLOCK,
@@ -49,7 +49,7 @@ function readDetail(args: Record<string, unknown>): string {
   return path;
 }
 
-function toolDetail(message: ToolMessage): string {
+export function toolDetail(message: ToolMessage): string {
   const args = argObject(message.args);
   if (message.name === "Bash") return typeof args.command === "string" ? args.command : "";
   if (message.name === "Read") return readDetail(args);
@@ -161,7 +161,7 @@ export function Transcript({
   );
 }
 
-function isHidden(message: ChatMessage, mode: ChatMode): boolean {
+export function isHidden(message: ChatMessage, mode: ChatMode): boolean {
   if (mode !== "deliver") return false;
   if (message.role === "assistant") return !message.error;
   if (message.role === "tool") return !DELIVER_TOOLS.has(message.name);

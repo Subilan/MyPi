@@ -94,7 +94,10 @@ const components: Components = {
   a({ node: _node, className, href, onClick, ...props }) {
     return (
       <a
-        className={cn("text-primary underline underline-offset-4 hover:opacity-80", className)}
+        className={cn(
+          "text-primary font-normal no-underline underline-offset-4 hover:underline hover:opacity-80",
+          className,
+        )}
         href={href}
         onClick={(event) => {
           onClick?.(event);

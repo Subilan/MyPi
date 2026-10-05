@@ -2,11 +2,14 @@ import { memo } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeKatex from "rehype-katex";
+import remarkCjkFriendly from "remark-cjk-friendly/parseOnly";
+import remarkCjkFriendlyGfmStrikethrough from "remark-cjk-friendly-gfm-strikethrough/parseOnly";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
 import { Separator } from "@/components/ui/separator";
 import { isTauriRuntime } from "@/lib/agent/client";
+import { remarkGfmAutolink } from "@/lib/chat/remark-gfm-autolink";
 import { cn } from "@/lib/utils";
 
 const CARET = [
@@ -142,7 +145,13 @@ export const Markdown = memo(function Markdown({
   return (
     <div className={cn("break-words", caret ? CARET : null)}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
+        remarkPlugins={[
+          remarkGfm,
+          remarkMath,
+          remarkGfmAutolink,
+          remarkCjkFriendly,
+          remarkCjkFriendlyGfmStrikethrough,
+        ]}
         rehypePlugins={[rehypeKatex]}
         components={components}
       >

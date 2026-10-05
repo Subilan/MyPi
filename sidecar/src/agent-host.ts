@@ -1,9 +1,15 @@
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import { createModels, type Provider } from "@earendil-works/pi-ai";
 import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
-import type { ChatMode, DecisionAnswer } from "../../shared/protocol.ts";
+import type {
+  AgentSessionData,
+  AgentSessionSummary,
+  ChatMode,
+  DecisionAnswer,
+} from "../../shared/protocol.ts";
 import { createDeliverTools, DecisionRegistry } from "./deliver.ts";
 import { openPromptFile, readPromptText, writePromptText } from "./prompt.ts";
+import { SessionStore } from "./session.ts";
 import { loadSettings } from "./settings.ts";
 import { createWorkdirTools } from "./tools.ts";
 import { resolveInitialWorkdir, Workdir } from "./workdir.ts";
@@ -34,12 +40,25 @@ export interface AgentHost {
   setMode(mode: ChatMode): ChatMode;
   answerDecision(toolCallId: string, answers: DecisionAnswer[]): boolean;
   snapshot(): { messageCount: number; isStreaming: boolean };
+  sessionId(): string;
+  sessionsDir(): string;
+  sessions(): AgentSessionSummary[];
+  switchSession(id: string): Promise<AgentSessionData>;
+  recordError(message: string): void;
 }
 
 export function createAgentHost(onEvent: (event: AgentEvent) => void): AgentHost {
   const { settings, error } = loadSettings();
   const file = openPromptFile(settings.systemPrompt);
   const workdir = new Workdir(resolveInitialWorkdir());
+  const store = new SessionStore();
+
+  const sessionApi = {
+    sessionId: () => store.id,
+    sessionsDir: () => store.dir,
+    sessions: () => store.list(),
+    recordError: (message: string) => store.error(message),
+  };
 
   const promptFile = (apply?: (text: string) => void) => ({
     systemPrompt: () => ({ path: file.path, text: readPromptText(file.path, file.text) }),
@@ -57,26 +76,45 @@ export function createAgentHost(onEvent: (event: AgentEvent) => void): AgentHost
     settingsPath: settings.path,
   };
 
-  const broken = (configError: string): AgentHost => ({
-    ...info,
-    configError,
-    ...promptFile(),
-    async prompt() {
-      throw new Error(configError);
-    },
-    async abort() {},
-    async clear() {},
-    workdir: () => workdir.path,
-    setWorkdir() {
-      throw new Error(configError);
-    },
-    mode: () => "regular",
-    setMode() {
-      throw new Error(configError);
-    },
-    answerDecision: () => false,
-    snapshot: () => ({ messageCount: 0, isStreaming: false }),
-  });
+  const startStoreSession = (currentMode: ChatMode) =>
+    store.start({
+      mode: currentMode,
+      workdir: workdir.path,
+      provider: settings.provider,
+      model: settings.model,
+    });
+
+  const broken = (configError: string): AgentHost => {
+    startStoreSession("regular");
+    return {
+      ...info,
+      configError,
+      ...promptFile(),
+      ...sessionApi,
+      async prompt() {
+        throw new Error(configError);
+      },
+      async abort() {},
+      async clear() {
+        startStoreSession("regular");
+      },
+      workdir: () => workdir.path,
+      setWorkdir() {
+        throw new Error(configError);
+      },
+      mode: () => "regular",
+      setMode() {
+        throw new Error(configError);
+      },
+      answerDecision: () => false,
+      snapshot: () => ({ messageCount: 0, isStreaming: false }),
+      switchSession: async (id: string) => {
+        const { summary, entries } = store.read(id);
+        store.resume(id);
+        return { summary, entries };
+      },
+    };
+  };
 
   if (error) return broken(error);
 
@@ -117,13 +155,16 @@ export function createAgentHost(onEvent: (event: AgentEvent) => void): AgentHost
   let mode: ChatMode = "regular";
   let forcedContinues = 0;
 
+  const toolsForMode = (target: ChatMode) =>
+    target === "deliver" ? [...tools, ...deliverTools] : tools;
+
   const build = (systemPrompt: string, history?: AgentMessage[]): Agent => {
     const agent = new Agent({
       initialState: {
         systemPrompt: composeSystemPrompt(systemPrompt, workdir.path, mode),
         model,
         thinkingLevel: settings.thinkingLevel,
-        tools: mode === "deliver" ? [...tools, ...deliverTools] : tools,
+        tools: toolsForMode(mode),
         ...(history && history.length > 0 ? { messages: history } : {}),
       },
       streamFn: models.streamSimple.bind(models),
@@ -146,21 +187,27 @@ export function createAgentHost(onEvent: (event: AgentEvent) => void): AgentHost
       },
     });
     agent.subscribe((event) => {
+      store.event(event);
       onEvent(event);
     });
     return agent;
   };
 
+  const startSession = () => startStoreSession(mode);
+  startSession();
+
   let promptText = file.text;
   let agent = build(promptText);
-  const rebuild = (text: string) => {
-    const history = agent.state.messages.filter((message) => message.role !== "system");
-    agent = build(text, history);
+  const rebuild = (text: string, next?: AgentMessage[]) => {
+    const history = next ?? agent.state.messages.filter((message) => message.role !== "system");
+    const allowed = new Set(toolsForMode(mode).map((tool) => tool.name));
+    agent = build(text, prepareHistory(history, allowed));
   };
 
   return {
     ...info,
     configError: null,
+    ...sessionApi,
     ...promptFile((text) => {
       promptText = text;
       rebuild(text);
@@ -168,20 +215,32 @@ export function createAgentHost(onEvent: (event: AgentEvent) => void): AgentHost
     workdir: () => workdir.path,
     setWorkdir(input: string) {
       const next = workdir.set(input);
+      store.workdir(next);
       rebuild(promptText);
       return next;
     },
     mode: () => mode,
     setMode(next: ChatMode) {
       mode = next;
+      store.mode(next);
       rebuild(promptText);
       return mode;
     },
     answerDecision(toolCallId: string, answers: DecisionAnswer[]) {
       return decisions.answer(toolCallId, answers);
     },
+    async switchSession(id: string) {
+      const { summary, entries, history } = store.read(id);
+      agent.abort();
+      await agent.waitForIdle();
+      store.resume(id);
+      mode = summary.mode;
+      rebuild(promptText, history);
+      return { summary, entries };
+    },
     async prompt(text: string) {
       forcedContinues = 0;
+      store.user(text);
       await agent.prompt(text);
     },
     async abort() {
@@ -192,6 +251,7 @@ export function createAgentHost(onEvent: (event: AgentEvent) => void): AgentHost
       agent.abort();
       agent.reset();
       await agent.waitForIdle();
+      startSession();
     },
     snapshot: () => ({
       messageCount: agent.state.messages.length,
@@ -209,8 +269,52 @@ const DELIVER_PROMPT = [
   "- report_success: the request is fulfilled. Include a concise description (max 50 chars), optional artifact paths (web links or absolute local paths), and optional next steps.",
   "- report_failure: you cannot fulfill the request. Explain the reason (max 50 chars) and optional suggestions.",
   "When the user must make a choice, call request_user_decision with one question or a batch of questions before guessing.",
+  "When an option or question needs to distinguish the user from the assistant, name them with the words of the language you are writing in (for English, \"the user\" and \"the assistant\"); never use first- or second-person pronouns such as \"I\", \"me\" or \"you\", and never leave a word from another language inside the text.",
   "Every tool argument must match its field's semantics; never pass information that does not belong to a field.",
 ].join("\n");
+
+function prepareHistory(
+  messages: AgentMessage[],
+  allowedToolNames: ReadonlySet<string>,
+): AgentMessage[] {
+  const known = messages.map((message): AgentMessage => {
+    if (message.role !== "assistant") return message;
+    const content = message.content.filter(
+      (part) => part.type !== "toolCall" || allowedToolNames.has(part.name),
+    );
+    return content.length === message.content.length ? message : { ...message, content };
+  });
+  const answered = new Set(
+    known.flatMap((message) =>
+      message.role === "toolResult" && allowedToolNames.has(message.toolName)
+        ? [message.toolCallId]
+        : [],
+    ),
+  );
+  const called = new Set<string>();
+  const result: AgentMessage[] = [];
+  for (const message of known) {
+    if (message.role === "assistant") {
+      const content = message.content.filter(
+        (part) => part.type !== "toolCall" || answered.has(part.id),
+      );
+      if (content.length === 0) continue;
+      for (const part of content) {
+        if (part.type === "toolCall") called.add(part.id);
+      }
+      result.push(content.length === message.content.length ? message : { ...message, content });
+      continue;
+    }
+    if (message.role === "toolResult") {
+      if (allowedToolNames.has(message.toolName) && called.has(message.toolCallId)) {
+        result.push(message);
+      }
+      continue;
+    }
+    result.push(message);
+  }
+  return result;
+}
 
 function composeSystemPrompt(base: string, workdir: string, mode: ChatMode): string {
   const context = [

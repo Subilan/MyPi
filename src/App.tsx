@@ -3,12 +3,10 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { toast } from "sonner";
 import { Composer } from "@/components/chat/composer";
 import { Transcript } from "@/components/chat/transcript";
-import { Badge } from "@/components/ui/badge";
 import { Toaster } from "@/components/ui/sonner";
 import { useAgentChat } from "@/hooks/use-agent-chat";
 import { useEditorDocument } from "@/hooks/use-editor-document";
 import { agentClient, isTauriRuntime } from "@/lib/agent/client";
-import { modeLabel } from "@/lib/chat/commands";
 
 const EditorPane = lazy(() =>
   import("@/components/editor/editor-pane").then((module) => ({ default: module.EditorPane })),
@@ -88,34 +86,6 @@ export default function App() {
         </Suspense>
       ) : (
         <main className="flex h-svh flex-col bg-background text-foreground">
-          <header className="shrink-0 border-b">
-            <div className="flex w-full items-center justify-between gap-3 px-4 py-2.5">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="text-sm font-medium">agent-runbook</span>
-                {chat.runtime ? (
-                  <Badge variant="outline" className="font-mono">
-                    {chat.runtime.provider}/{chat.runtime.model}
-                  </Badge>
-                ) : null}
-                <Badge variant={chat.mode === "deliver" ? "default" : "outline"}>
-                  {modeLabel(chat.mode)}
-                </Badge>
-                {chat.runtime ? (
-                  <Badge
-                    variant="outline"
-                    className="min-w-0 max-w-80 truncate font-mono"
-                    title={chat.runtime.workdir}
-                  >
-                    {chat.runtime.workdir}
-                  </Badge>
-                ) : null}
-              </div>
-              <Badge variant={chat.running ? "default" : "secondary"}>
-                {chat.running ? "running" : "idle"}
-              </Badge>
-            </div>
-          </header>
-
           {notice ? (
             <div className="shrink-0 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-xs break-words text-destructive">
               {notice}
@@ -126,11 +96,14 @@ export default function App() {
             messages={chat.messages}
             mode={chat.mode}
             running={chat.running}
+            waitingForUser={chat.waitingForUser}
             runStartedAt={chat.runStartedAt}
             onDecisionAnswer={chat.answerDecision}
+            onConfirmAnswer={chat.answerConfirm}
           />
           <Composer
             running={chat.running}
+            locked={chat.confirmPending}
             history={chat.messages
               .filter((message) => message.role === "user")
               .map((message) => message.text)}

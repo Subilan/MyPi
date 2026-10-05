@@ -45,4 +45,22 @@ export interface ToolMessage {
   error: string | null;
 }
 
-export type ChatMessage = UserMessage | AssistantMessage | NoticeMessage | ErrorMessage | ToolMessage;
+import type { ChatMode } from "@shared/protocol";
+
+export interface ConfirmMessage {
+  id: string;
+  role: "confirm";
+  title: string;
+  text: string;
+  createdAt: number;
+  answer: "yes" | "no" | null;
+  switchTo: ChatMode;
+}
+
+export type ChatMessage =
+  | UserMessage
+  | AssistantMessage
+  | NoticeMessage
+  | ErrorMessage
+  | ConfirmMessage
+  | ToolMessage;

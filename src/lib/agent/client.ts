@@ -9,6 +9,8 @@ import type {
   AgentPromptFileData,
   AgentRecord,
   AgentRequest,
+  AgentSessionData,
+  AgentSessionListData,
   AgentStateData,
   AgentStatus,
   ChatMode,
@@ -100,6 +102,14 @@ export class AgentClient {
 
   answerDecision(toolCallId: string, answers: DecisionAnswer[]): Promise<AgentDecisionData> {
     return this.#send<AgentDecisionData>({ type: "decision_answer", toolCallId, answers });
+  }
+
+  sessionList(): Promise<AgentSessionListData> {
+    return this.#send<AgentSessionListData>({ type: "session_list" });
+  }
+
+  switchSession(sessionId: string): Promise<AgentSessionData> {
+    return this.#send<AgentSessionData>({ type: "session_switch", sessionId });
   }
 
   status(): Promise<AgentStatus> {

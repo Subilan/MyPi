@@ -6,8 +6,11 @@ export type CommandAction =
   | { type: "system.edit" }
   | { type: "cwd.show" }
   | { type: "cwd.set"; path: string }
+  | { type: "info.show" }
   | { type: "mode.show" }
-  | { type: "mode.set"; mode: ChatMode };
+  | { type: "mode.set"; mode: ChatMode }
+  | { type: "sessions.list" }
+  | { type: "sessions.switch"; target: string };
 
 export interface AgentCommand {
   name: string;
@@ -74,11 +77,29 @@ const SPECS: readonly CommandSpec[] = [
       args.length === 0 ? { type: "cwd.show" } : { type: "cwd.set", path: unquote(raw) },
   },
   {
+    name: "info",
+    aliases: ["status"],
+    description: "查看模型、模式、工作目录等运行信息",
+    usage: "/info",
+    parse: (args) => (args.length === 0 ? { type: "info.show" } : null),
+  },
+  {
     name: "mode",
     aliases: [],
     description: "查看或切换 regular / deliver 模式",
     usage: "/mode [regular|deliver]",
     parse: parseMode,
+  },
+  {
+    name: "sessions",
+    aliases: ["session"],
+    description: "列出会话，或用序号 / id 切换到一个历史会话继续聊",
+    usage: "/sessions [序号|id]",
+    parse: (args) => {
+      if (args.length === 0) return { type: "sessions.list" };
+      if (args.length === 1) return { type: "sessions.switch", target: args[0] };
+      return null;
+    },
   },
 ];
 

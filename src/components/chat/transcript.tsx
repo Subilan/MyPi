@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef } from "react";
 import type { ChatMode, DecisionAnswer } from "@shared/protocol";
+import { ConfirmCard } from "@/components/chat/confirm-card";
 import { DecisionCard } from "@/components/chat/decision-card";
 import { DeliveryCard } from "@/components/chat/delivery-card";
 import { Markdown } from "@/components/chat/markdown";
@@ -14,10 +15,12 @@ const MAX_ARGS_CHARS = 400;
 
 const DELIVER_TOOLS = new Set(["report_success", "report_failure", "request_user_decision"]);
 
+const ERROR_BLOCK = "bg-red-50 text-red-900 dark:bg-red-950/40 dark:text-red-100";
+
 const TOOL_STYLES: Record<"running" | "ok" | "error", string> = {
   running: "bg-sky-50 text-sky-900 dark:bg-sky-950/40 dark:text-sky-100",
   ok: "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100",
-  error: "bg-red-50 text-red-900 dark:bg-red-950/40 dark:text-red-100",
+  error: ERROR_BLOCK,
 };
 
 function formatArgs(args: unknown): string {
@@ -31,6 +34,12 @@ function formatArgs(args: unknown): string {
   return text.length > MAX_ARGS_CHARS ? `${text.slice(0, MAX_ARGS_CHARS)}…` : text;
 }
 
+function ErrorBlock({ text }: { text: string }) {
+  return (
+    <div className={cn("px-4 py-3 text-[15px] leading-7 break-words", ERROR_BLOCK)}>{text}</div>
+  );
+}
+
 const clockFormatter = new Intl.DateTimeFormat(undefined, {
   hour: "2-digit",
   minute: "2-digit",
@@ -42,23 +51,29 @@ export function Transcript({
   messages,
   mode,
   running,
+  waitingForUser,
   runStartedAt,
   onDecisionAnswer,
+  onConfirmAnswer,
 }: {
   messages: ChatMessage[];
   mode: ChatMode;
   running: boolean;
+  waitingForUser: boolean;
   runStartedAt: number | null;
   onDecisionAnswer: (toolCallId: string, answers: DecisionAnswer[]) => void;
+  onConfirmAnswer: (yes: boolean) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
+
+  const emptyHint = messages.length === 0 && !(mode === "deliver" && running);
 
   useLayoutEffect(() => {
     const node = containerRef.current;
     if (!node || !stickRef.current) return;
     node.scrollTop = node.scrollHeight;
-  }, [messages, running]);
+  }, [messages, running, waitingForUser]);
 
   const onScroll = () => {
     const node = containerRef.current;
@@ -69,11 +84,9 @@ export function Transcript({
 
   return (
     <div ref={containerRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
-      <div className="flex w-full flex-col pb-6">
-        {messages.length === 0 && !(mode === "deliver" && running) ? (
-          <p className="px-4 py-24 text-center text-sm text-muted-foreground">
-            输入一条消息，开始和 agent 对话。
-          </p>
+      <div className={cn("flex w-full flex-col pb-6", emptyHint && "min-h-full justify-center")}>
+        {emptyHint ? (
+          <p className="px-4 text-center text-sm text-muted-foreground">输入消息或指令以开始</p>
         ) : (
           messages.map((message) => (
             <MessageRow
@@ -81,10 +94,11 @@ export function Transcript({
               message={message}
               mode={mode}
               onDecisionAnswer={onDecisionAnswer}
+              onConfirmAnswer={onConfirmAnswer}
             />
           ))
         )}
-        {mode === "deliver" && running ? (
+        {mode === "deliver" && running && !waitingForUser ? (
           <div className="px-4 py-3 text-[15px] leading-7">
             <ThinkingIndicator label="Working" startedAt={runStartedAt ?? Date.now()} />
           </div>
@@ -105,15 +119,22 @@ function MessageRow({
   message,
   mode,
   onDecisionAnswer,
+  onConfirmAnswer,
 }: {
   message: ChatMessage;
   mode: ChatMode;
   onDecisionAnswer: (toolCallId: string, answers: DecisionAnswer[]) => void;
+  onConfirmAnswer: (yes: boolean) => void;
 }) {
   if (isHidden(message, mode)) return null;
   return (
     <div className="group relative">
-      <MessageBody message={message} mode={mode} onDecisionAnswer={onDecisionAnswer} />
+      <MessageBody
+        message={message}
+        mode={mode}
+        onDecisionAnswer={onDecisionAnswer}
+        onConfirmAnswer={onConfirmAnswer}
+      />
       <time
         dateTime={new Date(message.createdAt).toISOString()}
         className="absolute top-3 right-4 text-sm opacity-0 group-hover:opacity-100"
@@ -128,15 +149,21 @@ function MessageBody({
   message,
   mode,
   onDecisionAnswer,
+  onConfirmAnswer,
 }: {
   message: ChatMessage;
   mode: ChatMode;
   onDecisionAnswer: (toolCallId: string, answers: DecisionAnswer[]) => void;
+  onConfirmAnswer: (yes: boolean) => void;
 }) {
+  if (message.role === "confirm") {
+    return <ConfirmCard message={message} onAnswer={onConfirmAnswer} />;
+  }
+
   if (message.role === "notice") {
     return (
       <div className="bg-sky-50 px-4 py-3 text-[15px] leading-7 text-sky-900 dark:bg-sky-950/40 dark:text-sky-100">
-        <p className="text-xs text-sky-700/80 dark:text-sky-300/80">{message.title}</p>
+        <p className="text-xs font-semibold text-sky-700/80 dark:text-sky-300/80">{message.title}</p>
         {message.text ? <p className="mt-1 whitespace-pre-wrap">{message.text}</p> : null}
         {message.error ? <p className="mt-2 text-destructive">{message.error}</p> : null}
       </div>
@@ -155,21 +182,17 @@ function MessageBody({
   }
 
   if (message.role === "error") {
-    return (
-      <div className={cn("px-4 py-3 text-[15px] leading-7 break-words", TOOL_STYLES.error)}>
-        {message.text}
-      </div>
-    );
+    return <ErrorBlock text={message.text} />;
   }
 
   if (message.role === "tool") {
-    if (mode === "deliver") {
-      if (message.name === "report_success") {
-        return <DeliveryCard status="success" args={message.args} />;
-      }
-      if (message.name === "report_failure") {
-        return <DeliveryCard status="failure" args={message.args} />;
-      }
+    if (message.name === "report_success") {
+      return <DeliveryCard status="success" args={message.args} />;
+    }
+    if (message.name === "report_failure") {
+      return <DeliveryCard status="failure" args={message.args} />;
+    }
+    if (message.name === "request_user_decision") {
       return <DecisionCard message={message} onAnswer={onDecisionAnswer} />;
     }
     const args = formatArgs(message.args);
@@ -184,20 +207,18 @@ function MessageBody({
   }
 
   if (mode === "deliver") {
-    return (
-      <div className="px-4 py-3 text-[15px] leading-7">
-        {message.error ? <p className="break-words text-destructive">{message.error}</p> : null}
-      </div>
-    );
+    return message.error ? <ErrorBlock text={message.error} /> : null;
   }
 
   return (
-    <div className="px-4 py-3 text-[15px] leading-7">
-      {message.thinking ? <ThinkingIndicator startedAt={message.startedAt} /> : null}
-      {message.text ? <Markdown text={message.text} caret={message.streaming} /> : null}
-      {message.error ? (
-        <p className={cn("text-destructive", message.text ? "mt-2" : "")}>{message.error}</p>
+    <div className="text-[15px] leading-7">
+      {message.thinking || message.text ? (
+        <div className="px-4 py-3">
+          {message.thinking ? <ThinkingIndicator startedAt={message.startedAt} /> : null}
+          {message.text ? <Markdown text={message.text} caret={message.streaming} /> : null}
+        </div>
       ) : null}
+      {message.error ? <ErrorBlock text={message.error} /> : null}
     </div>
   );
 }

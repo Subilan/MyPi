@@ -74,7 +74,7 @@ const decisionParameters = Type.Object({
         Type.Array(
           Type.Object({
             label: Type.String({
-              description: "选项内容，不要写「其它」之类的兜底项，界面会自己追加",
+              description: "选项内容，不要自行创建其它选项",
             }),
             description: Type.Optional(
               Type.String({ description: "选项介绍，鼠标悬停时展示" }),
@@ -82,10 +82,9 @@ const decisionParameters = Type.Object({
           }),
         ),
       ),
-      allow_others: Type.Optional(
+      show_other_choice: Type.Optional(
         Type.Boolean({
-          description:
-            "是否允许用户自行输入其它答案，默认允许。开启时界面会自动在选项末尾追加一个「其它」项，用户选中后可以输入自己的答案，所以不要在 options 里重复添加；想彻底去掉这个入口才传 false",
+          description: "展示一个允许用户自由输入的其它选项，默认展示，不要自行创建其它选项",
         }),
       ),
     }),

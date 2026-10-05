@@ -17,9 +17,9 @@ import type { ToolMessage } from "@/lib/chat/types";
 const OTHER = "__other__";
 
 const TYPE_LABEL: Record<DecisionQuestion["type"], string> = {
-  yes_no: "是否题",
-  single: "单选题",
-  multi: "多选题",
+  yes_no: "YES/NO",
+  single: "SINGLE",
+  multi: "MULTI",
 };
 
 function parseOptions(value: unknown): DecisionOption[] {
@@ -51,7 +51,7 @@ function parseQuestions(args: unknown): DecisionQuestion[] {
         type,
         question: raw.question,
         options: parseOptions(raw.options),
-        allow_others: raw.allow_others !== false,
+        show_other_choice: raw.show_other_choice !== false,
       },
     ];
   });
@@ -130,7 +130,7 @@ function QuestionBody({
       <p className="text-[15px] leading-7">
         <span className="text-sky-700/80 dark:text-sky-300/80">{index + 1}.</span>{" "}
         {question.question}
-        <span className="ml-2 text-xs text-sky-700/80 dark:text-sky-300/80">
+        <span className="ml-2 text-xs font-semibold text-sky-700/80 dark:text-sky-300/80">
           {TYPE_LABEL[question.type]}
         </span>
       </p>
@@ -148,7 +148,7 @@ function QuestionBody({
               {label}
             </ToggleGroupItem>
           ))}
-          {question.allow_others ? (
+          {question.show_other_choice ? (
             <ToggleGroupItem value={OTHER} disabled={!pending}>
               其它
             </ToggleGroupItem>
@@ -172,7 +172,7 @@ function QuestionBody({
               </div>
             );
           })}
-          {question.allow_others ? (
+          {question.show_other_choice ? (
             <div className="flex items-center gap-2">
               <Checkbox
                 id={otherId}
@@ -203,7 +203,7 @@ function QuestionBody({
               </div>
             );
           })}
-          {question.allow_others ? (
+          {question.show_other_choice ? (
             <div className="flex items-center gap-2">
               <RadioGroupItem value={OTHER} id={otherId} />
               <Label htmlFor={otherId} className="font-normal">
@@ -213,7 +213,7 @@ function QuestionBody({
           ) : null}
         </RadioGroup>
       )}
-      {question.allow_others && selected(OTHER) ? (
+      {question.show_other_choice && selected(OTHER) ? (
         <Input
           value={other}
           disabled={!pending}

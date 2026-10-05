@@ -76,7 +76,7 @@ export function DeliveryCard({
       {body ? <p className="mt-1 whitespace-pre-wrap">{body}</p> : null}
       {artifacts.length > 0 ? (
         <div className="mt-3">
-          <p className="text-xs opacity-70">交付产物</p>
+          <p className="text-xs font-semibold opacity-70">ARTIFACTS</p>
           <ul className="mt-1 flex flex-col gap-1">
             {artifacts.map((artifact, index) => (
               <li key={index}>
@@ -95,7 +95,7 @@ export function DeliveryCard({
       ) : null}
       {nextSteps.length > 0 ? (
         <div className="mt-3">
-          <p className="text-xs opacity-70">建议的下一步</p>
+          <p className="text-xs font-semibold opacity-70">NEXT STEPS</p>
           <ul className="mt-1 list-disc space-y-0.5 pl-5">
             {nextSteps.map((step, index) => (
               <li key={index}>{step}</li>
@@ -105,7 +105,7 @@ export function DeliveryCard({
       ) : null}
       {suggestions.length > 0 ? (
         <div className="mt-3">
-          <p className="text-xs opacity-70">调整建议</p>
+          <p className="text-xs font-semibold opacity-70">SUGGESTIONS</p>
           <ul className="mt-1 list-disc space-y-0.5 pl-5">
             {suggestions.map((item, index) => (
               <li key={index}>{item}</li>

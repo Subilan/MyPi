@@ -17,11 +17,13 @@ function isEditable(node: EventTarget | null): boolean {
 
 export function Composer({
   running,
+  locked,
   history,
   onSend,
   onStop,
 }: {
   running: boolean;
+  locked: boolean;
   history: string[];
   onSend: (text: string) => void;
   onStop: () => void;
@@ -142,7 +144,7 @@ export function Composer({
 
   const submit = () => {
     const text = draft.trim();
-    if (!text || running) return;
+    if (!text || running || locked) return;
     setDraft("");
     setHistoryIndex(null);
     stashRef.current = "";
@@ -164,10 +166,15 @@ export function Composer({
           rows={1}
           value={draft}
           placeholder={
-            dragging ? "松开鼠标，把文件路径插入输入框" : "给 agent 发一条消息，Enter 发送，Shift+Enter 换行"
+            locked
+              ? "请先在聊天记录里回答确认（Enter 是 / Backspace 否）"
+              : dragging
+                ? "松开鼠标，把文件路径插入输入框"
+                : undefined
           }
+          disabled={locked}
           className={cn(
-            "min-h-9 flex-1 resize-none rounded-md border border-input bg-transparent px-3 py-1.5 text-[15px] leading-6 outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30",
+            "min-h-9 flex-1 resize-none rounded-md border border-input bg-transparent px-3 py-1.5 text-[15px] leading-6 outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-input/30",
             isCommand ? "font-bold text-primary" : null,
             dragging ? "border-primary ring-3 ring-ring/40" : null,
           )}
@@ -221,7 +228,7 @@ export function Composer({
             <CircleStopIcon />
           </Button>
         ) : (
-          <Button size="icon" onClick={submit} disabled={!draft.trim()} aria-label="发送">
+          <Button size="icon" onClick={submit} disabled={!draft.trim() || locked} aria-label="发送">
             <ArrowUpIcon />
           </Button>
         )}

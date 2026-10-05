@@ -12,7 +12,7 @@ export interface DecisionQuestion {
   type: "yes_no" | "single" | "multi";
   question: string;
   options?: DecisionOption[];
-  allow_others?: boolean;
+  show_other_choice?: boolean;
 }
 
 export interface DecisionAnswer {
@@ -33,13 +33,16 @@ export interface AgentRequest {
     | "cwd"
     | "cwd_set"
     | "mode_set"
-    | "decision_answer";
+    | "decision_answer"
+    | "session_list"
+    | "session_switch";
   text?: string;
   name?: string;
   path?: string;
   mode?: ChatMode;
   toolCallId?: string;
   answers?: DecisionAnswer[];
+  sessionId?: string;
 }
 
 export interface AgentRuntimeInfo {
@@ -53,6 +56,8 @@ export interface AgentRuntimeInfo {
   settingsPath: string;
   workdir: string;
   mode: ChatMode;
+  sessionId: string;
+  sessionsDir: string;
   configError: string | null;
 }
 
@@ -69,6 +74,44 @@ export interface AgentStateData {
 
 export interface AgentClearData {
   cleared: boolean;
+  sessionId: string;
+}
+
+export interface AgentSessionSummary {
+  id: string;
+  startedAt: number;
+  updatedAt: number;
+  mode: ChatMode;
+  workdir: string;
+  userMessages: number;
+  assistantMessages: number;
+  preview: string;
+  path: string;
+  current: boolean;
+}
+
+export interface AgentSessionListData {
+  sessions: AgentSessionSummary[];
+}
+
+export type AgentSessionEntry =
+  | { role: "user"; at: number; text: string }
+  | { role: "assistant"; at: number; text: string; stopReason?: string; error: string | null }
+  | {
+      role: "tool";
+      at: number;
+      toolCallId: string;
+      name: string;
+      args?: unknown;
+      isError: boolean;
+      output: string;
+    }
+  | { role: "error"; at: number; text: string }
+  | { role: "notice"; at: number; title: string; text: string };
+
+export interface AgentSessionData {
+  summary: AgentSessionSummary;
+  entries: AgentSessionEntry[];
 }
 
 export interface AgentPromptFileData {

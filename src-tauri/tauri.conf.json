@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "agent-runbook",
+  "productName": "Runbook",
   "version": "0.1.0",
   "identifier": "net.seatide.agentrunbook",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "agent-runbook",
+        "title": "Runbook",
         "width": 1000,
         "height": 700,
         "minWidth": 640,

@@ -21,8 +21,14 @@ const info: AgentRuntimeInfo = {
   settingsPath: host.settingsPath,
   workdir: host.workdir(),
   mode: host.mode(),
+  sessionId: host.sessionId(),
+  sessionsDir: host.sessionsDir(),
   configError: host.configError,
 };
+
+function runtimeInfo(): AgentRuntimeInfo {
+  return { ...info, mode: host.mode(), sessionId: host.sessionId() };
+}
 
 let buffer = "";
 let active = 0;
@@ -82,7 +88,7 @@ async function handle(request: AgentRequest): Promise<void> {
         type: "response",
         id: request.id,
         ok: true,
-        data: { greeting: `hello ${who}`, runtime: { ...info, mode: host.mode() } },
+        data: { greeting: `hello ${who}`, runtime: runtimeInfo() },
       });
       return;
     }
@@ -107,6 +113,7 @@ async function handle(request: AgentRequest): Promise<void> {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         log("error", `prompt failed: ${message}`);
+        host.recordError(message);
         emit({ type: "event", name: "run_error", data: { message } });
       }
       return;
@@ -118,7 +125,30 @@ async function handle(request: AgentRequest): Promise<void> {
     }
     case "clear": {
       await host.clear();
-      emit({ type: "response", id: request.id, ok: true, data: { cleared: true } });
+      emit({
+        type: "response",
+        id: request.id,
+        ok: true,
+        data: { cleared: true, sessionId: host.sessionId() },
+      });
+      return;
+    }
+    case "session_list": {
+      emit({
+        type: "response",
+        id: request.id,
+        ok: true,
+        data: { sessions: host.sessions() },
+      });
+      return;
+    }
+    case "session_switch": {
+      emit({
+        type: "response",
+        id: request.id,
+        ok: true,
+        data: await host.switchSession(request.sessionId ?? ""),
+      });
       return;
     }
     case "system_prompt": {
@@ -250,4 +280,4 @@ process.stdin.on("end", () => {
 
 log("info", `serving the protocol over stdin/stdout as node ${process.version}`);
 if (host.configError) log("error", host.configError);
-emit({ type: "ready", runtime: info });
+emit({ type: "ready", runtime: runtimeInfo() });

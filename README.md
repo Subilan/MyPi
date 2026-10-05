@@ -1,6 +1,6 @@
 # agent-runbook
 
-基于 Tauri v2 的跨平台桌面应用骨架，agent 由 `@earendil-works/pi-agent-core` 驱动。界面是一个聊天页：中间是从上往下滚动的聊天记录，底部是固定吸附的输入框；用户消息用整行灰底承载，agent 的消息没有背景、逐字流式出现，思考阶段只显示 `Thinking...` 和已耗时，不展示思考内容；每条消息悬停时在右上角显示到秒的时间戳。默认接 DeepSeek。界面有 Regular 与 Deliver 两种模式，用 `/mode` 切换，详见下面的模式一节。输入框里按 `ArrowUp` / `ArrowDown` 在本次会话已发送的消息里前后翻阅，往下越过最新一条会回到翻阅前的草稿；`Esc` 清空输入框，焦点不在输入框时按 `i` 可直接聚焦。
+基于 Tauri v2 的跨平台桌面应用骨架，agent 由 `@earendil-works/pi-agent-core` 驱动。界面是一个聊天页：中间是从上往下滚动的聊天记录，底部是固定吸附的输入框；用户消息用整行灰底承载，agent 的消息没有背景、逐字流式出现，思考阶段只显示 `Thinking...` 和已耗时，不展示思考内容；每条消息悬停时在右上角显示到秒的时间戳。默认接 DeepSeek。界面有 Regular 与 Deliver 两种模式，用 `/mode` 切换，详见下面的模式一节。顶部没有状态栏，模型、模式、工作目录这类运行信息用 `/info` 在聊天记录里查看。输入框里按 `ArrowUp` / `ArrowDown` 在本次会话已发送的消息里前后翻阅，往下越过最新一条会回到翻阅前的草稿；`Esc` 清空输入框，焦点不在输入框时按 `i` 可直接聚焦。
 
 ## 架构
 
@@ -40,6 +40,8 @@ Windows 下启动子进程会带 `CREATE_NO_WINDOW`，避免弹出控制台窗�
 shared/protocol.ts            前端与 sidecar 共用的 JSONL 协议类型
 sidecar/src/index.ts          stdin/stdout 上的 JSONL 主循环
 sidecar/src/settings.ts       读取 ~/.agent-runbook/settings.toml
+sidecar/src/prompt.ts        系统提示词文件的读写
+sidecar/src/session.ts        会话记录的落盘、列表与读取
 sidecar/src/workdir.ts        工作目录的状态、路径解析与 ~ 展开
 sidecar/src/tools.ts          Read / Edit / Write / Bash 四个工具的实现
 sidecar/src/agent-host.ts     pi-agent-core 接线处，provider 与模型在这里定
@@ -120,34 +122,49 @@ agent 的回复走 `src/components/chat/markdown.tsx`，用 react-markdown 渲�
 
 | 指令 | 作用 |
 | --- | --- |
-| `/clear`、`/new` | 清空模型上下文和界面上的聊天记录 |
+| `/clear`、`/new` | 结束当前会话，开一个新的：清空模型上下文与界面上的聊天记录，旧会话留在磁盘上 |
+| `/sessions` | 列出当前与历史会话 |
+| `/sessions <序号\|id>` | 切换到某个历史会话，接着往下聊 |
 | `/system` | 在聊天记录里展示当前系统提示词 |
 | `/system edit` | 打开编辑器修改系统提示词，子命令支持前缀缩略（`e` / `ed` / `edi` / `edit`） |
 | `/cd` | 在聊天记录里显示当前工作目录 |
 | `/cd <path>` | 切换工作目录，支持 `~`、相对路径与引号包裹的含空格路径 |
+| `/info` | 在聊天记录里显示模型、模式、运行状态、工作目录等运行信息 |
 | `/mode` | 在聊天记录里显示当前模式 |
 | `/mode <regular\|deliver>` | 切换模式，模式名支持前缀缩略（`r` / `reg` / `d` / `del`） |
 
-`/clear` 调 sidecar 的 `agent.reset()` 重置模型侧的消息，成功后前端整个消息列表也一起清掉，屏幕回到空状态。`/system` 把 sidecar 读回来的文件内容原样铺在聊天记录里，只读，要改就走 `/system edit`。
+`/clear` 调 sidecar 的 `agent.reset()` 重置模型侧的消息，并开一个新的会话，成功后前端整个消息列表也一起清掉，屏幕回到空状态。`/system` 以 `SYSTEM PROMPT` 为标题，正文先列文件路径，再把 sidecar 读回来的文件内容原样铺在聊天记录里，只读，要改就走 `/system edit`。
+
+## 会话
+
+会话由 sidecar 记录，一个会话一个 JSONL 文件，存在 `~/.agent-runbook/sessions/`（`AGENT_RUNBOOK_SESSIONS` 可改目录）。文件名就是会话 id，形如 `20260205-102231-a1b2`，前缀是本地时间，末尾四位随机数避免同一秒重名；里面的时间戳是 epoch 毫秒，所以 `/sessions` 里的顺序按 id 倒序排。每个文件的第一行是会话头，记下 id、开始时间、模式、工作目录、provider 与 model。之后每行一条记录，存的是 agent 侧真实的消息对象：用户消息、assistant 消息（去掉 thinking 部分）、tool result，另有运行错误与模式、工作目录的变更。assistant 的思考内容不落盘，文件权限 0600。
+
+每条会话的聊天记录与模型上下文都从这份文件重建，所以会话之间完全独立：在 A 里聊到一半切到 B，A 的文件不动；切回 A 时历史照旧，接着发消息就追加在 A 的同一份文件里。切换时 sidecar 按消息里的 `toolCall` / `toolResult` 配对校验历史，把当前模式不支持的工具调用、以及缺少配对结果的残缺调用剔掉，再把工具集与系统提示词按当前配置重建，避免模型看到不存在的工具或悬空的工具结果；会话记录的模式会跟着恢复，但系统提示词与工作目录仍用当前配置。
+
+每次 `/clear` 或 `/new` 结束当前会话并开一个新的；应用重启也算新会话，不会自动恢复上一次的上下文。没有产生任何记录的会话不建文件，也不出现在列表里。`/sessions` 列出最近的 50 个会话，标出哪个是当前会话，每行带开始时间、问答条数与首条用户消息的摘要，末尾给出会话目录。`/sessions <序号>` 或 `/sessions <id 前缀>` 切换过去，聊天记录换成该会话，并追加一条 `SESSION` 提示说明接下来会写进哪个会话。
+
+这份记录同时也是排查模型输出的依据：原始 JSONL 里的转义换行就是模型当时返回的文本。
 
 ## 模式
 
-模式是 session 级的状态，切在内存里，重启应用回到 Regular；sidecar 是模式的唯一来源，前端连上后会从 `hello` 返回的 runtime 里对齐一次，所以刷新 WebView 不会让两边错位。头部有一个 badge 显示当前模式。
+模式是 session 级的状态，切在内存里；切换会话时会恢复该会话记录里的模式，重启应用则回到 Regular。sidecar 是模式的唯一来源，前端连上后会从 `hello` 返回的 runtime 里对齐一次，每次切换会话也会用返回的会话摘要对齐，所以刷新 WebView 不会让两边错位。当前模式可以用 `/mode` 或 `/info` 查看。
 
 Regular 就是原来的行为：思考阶段只显示 `Thinking...` 与已耗时，工具调用过程占整宽底色，正文照常流式渲染。
 
 Deliver 面向“让 agent 交活”的场景：
 
-- 思考内容、工具调用过程、模型的自由正文都不展示，运行期间只在记录末尾显示 `Working...` 和已耗时。
+- 思考内容、工具调用过程、模型的自由正文都不展示，运行期间只在记录末尾显示 `Working...` 和已耗时；卡在 `request_user_decision` 上等用户作答时不显示这一行，那段时间也不计入耗时，用户交卷后从原来的读数继续。
 - 每次任务必须以一个交付工具的调用收尾，普通的 Read / Edit / Write / Bash 仍照常执行，只是界面上看不到。
 - 交付结果以结构化块呈现：`report_success` 显示完成描述、交付产物与建议的下一步，`report_failure` 显示失败原因与调整建议。
-- `request_user_decision` 在聊天记录里渲染成选择题块，支持是否题、单选题、多选题，可一次问多个问题；工具会阻塞当前 run，等用户在卡片上作答后把答案作为工具结果交回模型，同一轮继续。是否题用按钮，单选题用 radio group，多选题用 checkbox group；选项的 `label` 只放内容本身，`description` 作为介绍在鼠标悬停的 tooltip 里展示；每个问题可以带 `allow_others`，开启后会出现一个「其它」项，用户选中后可以自己输入，默认开启；这一项由界面统一追加，工具描述里也明确要求模型不要在 `options` 里自带同类选项，否则会出现两个「其它」。
+- `request_user_decision` 在聊天记录里渲染成选择题块，支持是否题、单选题、多选题，可一次问多个问题；工具会阻塞当前 run，等用户在卡片上作答后把答案作为工具结果交回模型，同一轮继续。是否题用按钮，单选题用 radio group，多选题用 checkbox group；选项的 `label` 只放内容本身，`description` 作为介绍在鼠标悬停的 tooltip 里展示；每个问题可以带 `show_other_choice`，默认展示一个「其它」项，用户选中后可以自己输入；这一项由界面统一追加，工具描述里也明确要求模型不要自行创建其它选项，否则会出现两个「其它」。
 
-系统通知、选择题、交付结果跟用户消息用同一套版式（整宽、相同的内边距与 `15px/行高`），只用底色区分：系统通知与选择题是浅蓝，交付成功是浅绿，交付失败是浅红。
+系统通知、确认、选择题、交付结果跟用户消息用同一套版式（整宽、相同的内边距与 `15px/行高`，标题一行、正文 `mt-1`），只用底色区分：系统通知与选择题是浅蓝，确认待回答时浅黄、确认后浅绿、取消后灰色，交付成功是浅绿，交付失败是浅红。
+
+交付类工具不限模式地走卡片：`report_success` / `report_failure` / `request_user_decision` 在 regular 模式下也渲染成交付卡或选择题卡，不会被铺成「工具名 + JSON 参数」的行；只有工作目录相关的 Read / Edit / Write / Bash 才用那种通用行。
 
 `report_success` 的 `artifacts` 是交付产物路径列表，可以是网页链接（`http://` / `https://`）或本地绝对路径。前端在「交付产物」下逐条列出，点击网页链接交给系统浏览器打开，点击本地路径用系统默认应用打开。本地路径的打开权限限制在 `$HOME` / `$TEMP` / `$DOWNLOAD` / `$DOCUMENT` / `$DESKTOP` 与 `/tmp` 这些目录下（见 `src-tauri/capabilities/default.json` 里 `opener:allow-open-path` 的 scope），scope 之外的路径会提示打不开。
 
-模式切换通过 sidecar 的 `mode_set` 请求完成：sidecar 会带上已有对话重建 Agent，换成对应的系统提示词与工具集，历史消息不丢。`finishTurn` 钩子在 deliver 模式下保证任务以 `report_success` / `report_failure` 结束；如果模型只输出了正文而没有调用工具，会被连续追发几次请求逼它交付，最多三次后放行，避免死循环。
+模式切换通过 sidecar 的 `mode_set` 请求完成：前端先弹出一张 CONFIRMATION 卡（待回答时黄底，是按钮带 Enter 快捷键、否按钮带 Backspace 快捷键，待确认期间输入框锁住），用户确认后才发请求；回答后卡片整体换色换文案，确认变绿底 `CONFIRMED` 加「已切换为 Deliver 模式」，取消变灰底 `CANCELLED` 加「取消切换到 Deliver 模式」，切换请求失败时卡片退回待回答状态并附一条错误。sidecar 收到后带上已有对话重建 Agent，换成对应的系统提示词与工具集，并把不属于新工具集的 tool call 与 tool result 从模型历史里剔除（assistant 消息只去掉 `toolCall` 部分，只剩工具调用的整条丢弃），避免模型在 regular 模式下模仿历史里的 `report_success` 去调已经不存在的工具；聊天记录本身不动。`finishTurn` 钩子在 deliver 模式下保证任务以 `report_success` / `report_failure` 结束；如果模型只输出了正文而没有调用工具，会被连续追发几次请求逼它交付，最多三次后放行，避免死循环。
 
 ## 系统提示词与编辑器
 
@@ -167,7 +184,7 @@ macOS 的系统菜单默认把 `Cmd+W` 绑在 Close Window 上，快捷键会被
 
 ## 工作目录与工具
 
-sidecar 持有一个工作目录，默认是用户主目录，启动时可用 `AGENT_RUNBOOK_WORKDIR` 覆盖（给出不可用的路径时回退到主目录并打一条 warn）。运行期用 `/cd` 查看、`/cd <path>` 切换；路径支持 `~` 展开，相对路径按当前工作目录解析，含空格的路径用引号包住。切换成功后前端头部的目录 badge 与聊天里的通知一起更新。
+sidecar 持有一个工作目录，默认是用户主目录，启动时可用 `AGENT_RUNBOOK_WORKDIR` 覆盖（给出不可用的路径时回退到主目录并打一条 warn）。运行期用 `/cd` 查看、`/cd <path>` 切换；路径支持 `~` 展开，相对路径按当前工作目录解析，含空格的路径用引号包住。切换成功后前端记录的 runtime 与聊天里的通知一起更新。
 
 每次切换工作目录或保存系统提示词，sidecar 都会带着已有历史重建 Agent，并把 `Current working directory: ...` 追加到系统提示词末尾，让模型知道自己站在哪里。历史消息不丢，新目录从下一次请求开始生效。
 
@@ -190,4 +207,4 @@ agent 在 Regular 模式下有四个工具，实现在 `sidecar/src/tools.ts`；
 
 ## 还没做的
 
-会话持久化、模型与密钥的设置界面、sidecar 异常退出后的自动重启、图片的客户端缩放（现在只在超限时拒绝），以及把工具限制在一个可审批的权限模型下都还没有。sidecar 挂掉时前端会收到 `closed` 记录并显示原因，但不会自动重启。代码块暂时没有语法高亮，也没有 markdown 里的图片缓存、mermaid 这类扩展。编辑器目前只服务于系统提示词，以后接文件读写时可以直接复用。
+模型与密钥的设置界面、sidecar 异常退出后的自动重启、图片的客户端缩放（现在只在超限时拒绝），以及把工具限制在一个可审批的权限模型下都还没有。会话已经可以切换着继续聊，但重开应用不会自动回到上次的会话。sidecar 挂掉时前端会收到 `closed` 记录并显示原因，但不会自动重启。代码块暂时没有语法高亮，也没有 markdown 里的图片缓存、mermaid 这类扩展。编辑器目前只服务于系统提示词，以后接文件读写时可以直接复用。

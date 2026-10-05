@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
@@ -224,7 +224,12 @@ function runShell(
     const { file, args } = shellCommand(command);
     let child;
     try {
-      child = spawn(file, args, { cwd, env: process.env, windowsHide: true });
+      child = spawn(file, args, {
+        cwd,
+        env: process.env,
+        windowsHide: true,
+        detached: process.platform !== "win32",
+      });
     } catch (error) {
       settle({ stdout: "", stderr: message(error), code: null, timedOut: false, aborted: false });
       return;
@@ -244,7 +249,7 @@ function runShell(
       settle({ stdout, stderr, code, timedOut, aborted: Boolean(signal?.aborted) });
     };
 
-    const kill = () => child.kill("SIGKILL");
+    const kill = () => killTree(child);
     const onAbort = () => kill();
     const timer = setTimeout(() => {
       timedOut = true;
@@ -263,6 +268,19 @@ function runShell(
     child.on("error", (error) => finish(null, error));
     child.on("close", (code) => finish(code));
   });
+}
+
+function killTree(child: ChildProcess): void {
+  const pid = child.pid;
+  if (pid !== undefined && process.platform !== "win32") {
+    try {
+      process.kill(-pid, "SIGKILL");
+      return;
+    } catch {
+      // 进程组已消失时退回直接杀子进程
+    }
+  }
+  child.kill("SIGKILL");
 }
 
 function shellCommand(command: string): { file: string; args: string[] } {

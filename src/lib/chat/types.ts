@@ -42,6 +42,8 @@ export interface ToolMessage {
   status: "running" | "ok" | "error";
   output: string;
   createdAt: number;
+  startedAt: number;
+  finishedAt: number | null;
   error: string | null;
 }
 

@@ -37,6 +37,8 @@ export function Composer({
   const draftRef = useRef("");
   const caretToEndRef = useRef(false);
   const caretRef = useRef<number | null>(null);
+  const composingRef = useRef(false);
+  const compositionEndedAtRef = useRef(0);
   const isCommand = parseCommand(draft) !== null;
 
   useEffect(() => {
@@ -173,12 +175,24 @@ export function Composer({
                 : undefined
           }
           disabled={locked}
+          spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
+          autoComplete="off"
+          {...({ writingsuggestions: "false" } as Record<string, string>)}
           className={cn(
             "min-h-9 flex-1 resize-none rounded-md border border-input bg-transparent px-3 py-1.5 text-[15px] leading-6 outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-input/30",
             isCommand ? "font-bold text-primary" : null,
             dragging ? "border-primary ring-3 ring-ring/40" : null,
           )}
           onChange={(event) => setDraft(event.target.value)}
+          onCompositionStart={() => {
+            composingRef.current = true;
+          }}
+          onCompositionEnd={() => {
+            composingRef.current = false;
+            compositionEndedAtRef.current = Date.now();
+          }}
           onDragOver={(event) => {
             event.preventDefault();
             setDragging(true);
@@ -191,7 +205,8 @@ export function Composer({
             addPaths(files.map((file) => (file as File & { path?: string }).path ?? file.name));
           }}
           onKeyDown={(event) => {
-            if (event.nativeEvent.isComposing) return;
+            const native = event.nativeEvent;
+            if (native.isComposing || composingRef.current || native.keyCode === 229) return;
             if (event.key === "Escape") {
               event.preventDefault();
               setDraft("");
@@ -220,6 +235,7 @@ export function Composer({
             }
             if (event.key !== "Enter" || event.shiftKey) return;
             event.preventDefault();
+            if (Date.now() - compositionEndedAtRef.current < 100) return;
             submit();
           }}
         />

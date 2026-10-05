@@ -12,12 +12,13 @@ import type {
   UserMessage,
 } from "@/lib/chat/types";
 import type {
+  AgentAssistantTextData,
   AgentMessageEndData,
+  AgentMessageStartData,
   AgentRunErrorData,
   AgentRuntimeInfo,
   AgentSessionEntry,
   AgentSessionSummary,
-  AgentTextDeltaData,
   AgentToolEndData,
   AgentToolStartData,
   AgentToolUpdateData,
@@ -27,6 +28,12 @@ import type {
 
 export interface AgentChatOptions {
   onEditSystemPrompt?: () => void;
+}
+
+export interface SessionBrowserState {
+  loading: boolean;
+  error: string | null;
+  sessions: AgentSessionSummary[];
 }
 
 export interface AgentChat {
@@ -44,6 +51,9 @@ export interface AgentChat {
   answerConfirm(yes: boolean): void;
   answerDecision(toolCallId: string, answers: DecisionAnswer[]): void;
   sessionId: string | null;
+  sessionBrowser: SessionBrowserState | null;
+  closeSessionBrowser(): void;
+  switchSession(target: string): Promise<void>;
 }
 
 const DECISION_TOOL = "request_user_decision";
@@ -58,6 +68,7 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
   const [runtime, setRuntime] = useState<AgentRuntimeInfo | null>(null);
   const [bridgeError, setBridgeError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionBrowser, setSessionBrowser] = useState<SessionBrowserState | null>(null);
 
   const runningRef = useRef(false);
   const runBaseRef = useRef<number | null>(null);
@@ -68,7 +79,6 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
   const requestedModeRef = useRef<ChatMode | null>(null);
   const counterRef = useRef(0);
   const assistantIdRef = useRef<string | null>(null);
-  const lastFinalTextRef = useRef<string | null>(null);
   const editSystemPromptRef = useRef(options.onEditSystemPrompt);
   editSystemPromptRef.current = options.onEditSystemPrompt;
 
@@ -141,126 +151,87 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
     setWaitingForUser(false);
   }, []);
 
-  const applyToAssistant = useCallback(
+  const startAssistant = useCallback(() => {
+    const id = nextId();
+    assistantIdRef.current = id;
+    const now = Date.now();
+    const message: AssistantMessage = {
+      id,
+      role: "assistant",
+      text: "",
+      createdAt: now,
+      startedAt: now,
+      streaming: true,
+      thinking: true,
+      error: null,
+    };
+    setMessages((current) => [...current, message]);
+  }, [nextId]);
+
+  const patchAssistant = useCallback(
     (patch: (message: AssistantMessage) => AssistantMessage) => {
-      setMessages((current) => {
-        const id = assistantIdRef.current;
-        if (id) {
-          const index = current.findIndex((message) => message.id === id);
-          const found = current[index];
-          if (index >= 0 && found.role === "assistant") {
-            const next = current.slice();
-            next[index] = patch(found);
-            return next;
-          }
-        }
-        const created: AssistantMessage = {
-          id: nextId(),
-          role: "assistant",
-          text: "",
-          createdAt: Date.now(),
-          startedAt: Date.now(),
-          streaming: true,
-          thinking: true,
-          error: null,
-        };
-        assistantIdRef.current = created.id;
-        return [...current, patch(created)];
-      });
+      const id = assistantIdRef.current;
+      if (id === null) return;
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === id && message.role === "assistant" ? patch(message) : message,
+        ),
+      );
     },
-    [nextId],
+    [],
   );
 
-  const finishAssistant = useCallback(
-    (patch: (message: AssistantMessage) => AssistantMessage, text?: string) => {
+  const finalizeAssistant = useCallback(
+    (patch: (message: AssistantMessage) => AssistantMessage) => {
       const id = assistantIdRef.current;
       assistantIdRef.current = null;
+      if (id === null) return;
       setMessages((current) => {
-        let lastUser = -1;
-        for (let index = current.length - 1; index >= 0; index -= 1) {
-          if (current[index].role === "user") {
-            lastUser = index;
-            break;
-          }
+        const index = current.findIndex((message) => message.id === id);
+        const found = current[index];
+        if (index < 0 || found.role !== "assistant") return current;
+        const patched = patch(found);
+        if (!patched.text && !patched.error && !patched.streaming) {
+          return current.filter((message) => message.id !== id);
         }
-        const head = current.slice(0, lastUser + 1);
-        const tail = current.slice(lastUser + 1);
-        const separated = tail.some((entry) => entry.role === "tool");
-        let anchor = id === null ? -1 : tail.findIndex((entry) => entry.id === id);
-        if (anchor < 0) {
-          for (let index = tail.length - 1; index >= 0; index -= 1) {
-            if (tail[index].role === "assistant") {
-              anchor = index;
-              break;
-            }
-          }
-        }
-        const target = anchor >= 0 ? tail[anchor] : undefined;
-        if (!target || target.role !== "assistant") return current;
-        const patched = patch(text === undefined ? target : { ...target, text });
-        const drop = !patched.text && !patched.error && !patched.streaming;
-        const next: ChatMessage[] = [];
-        tail.forEach((entry, index) => {
-          if (entry.role !== "assistant") {
-            next.push(entry);
-            return;
-          }
-          if (index === anchor) {
-            if (!drop) next.push(patched);
-            return;
-          }
-          if (separated || text === undefined) next.push(entry);
-        });
-        return [...head, ...next];
+        const next = current.slice();
+        next[index] = patched;
+        return next;
       });
     },
     [],
   );
 
-  const stopStreaming = useCallback(() => {
-    setMessages((current) =>
-      current.map((message) =>
-        message.role === "assistant" && message.streaming
-          ? { ...message, streaming: false, thinking: false }
-          : message,
-      ),
-    );
-  }, []);
-
   const handleEvent = useCallback(
     (name: string, data: unknown) => {
       switch (name) {
-        case "text_delta": {
-          const { delta } = data as AgentTextDeltaData;
-          applyToAssistant((message) => ({
-            ...message,
-            text: message.text + (delta ?? ""),
-            thinking: false,
-          }));
+        case "message_start": {
+          const start = data as AgentMessageStartData;
+          if (start.role !== "assistant") return;
+          startAssistant();
           return;
         }
-        case "thinking_start": {
-          applyToAssistant((message) => (message.text ? message : { ...message, thinking: true }));
+        case "assistant_text": {
+          const { text } = data as AgentAssistantTextData;
+          patchAssistant((message) => ({ ...message, text, thinking: false }));
           return;
         }
         case "message_end": {
           const end = data as AgentMessageEndData;
           if (end.role !== "assistant") return;
-          finishAssistant(
-            (message) => ({
-              ...message,
-              streaming: false,
-              thinking: false,
-              error: errorFor(end),
-            }),
-            typeof end.text === "string" ? end.text : undefined,
-          );
-          if (typeof end.text === "string") lastFinalTextRef.current = end.text;
+          finalizeAssistant((message) => ({
+            ...message,
+            text: typeof end.text === "string" ? end.text : message.text,
+            streaming: false,
+            thinking: false,
+            error: errorFor(end),
+          }));
           if (end.stopReason === "aborted") reportAbort();
           return;
         }
         case "tool_execution_start": {
           const start = data as AgentToolStartData;
+          const now = Date.now();
           const tool: ToolMessage = {
             id: `tool:${start.toolCallId}`,
             role: "tool",
@@ -269,7 +240,9 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
             args: start.args,
             status: "running",
             output: "",
-            createdAt: Date.now(),
+            createdAt: now,
+            startedAt: now,
+            finishedAt: null,
             error: null,
           };
           setMessages((current) => [
@@ -293,6 +266,7 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
         }
         case "tool_execution_end": {
           const end = data as AgentToolEndData;
+          const finishedAt = Date.now();
           setMessages((current) =>
             current.map((entry) =>
               entry.role === "tool" && entry.toolCallId === end.toolCallId
@@ -300,6 +274,7 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
                     ...entry,
                     status: end.isError ? "error" : "ok",
                     output: end.output ?? entry.output,
+                    finishedAt,
                     error: end.isError ? end.output || "工具执行失败" : null,
                   }
                 : entry,
@@ -314,7 +289,7 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
           setRunStartedAt(null);
           clearWaiting();
           if (abortingRef.current) {
-            finishAssistant((message) => ({
+            finalizeAssistant((message) => ({
               ...message,
               streaming: false,
               thinking: false,
@@ -322,7 +297,7 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
             }));
             reportAbort();
           } else {
-            finishAssistant((message) => ({
+            finalizeAssistant((message) => ({
               ...message,
               streaming: false,
               thinking: false,
@@ -335,15 +310,11 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
           setRunningSafe(false);
           setRunStartedAt(null);
           clearWaiting();
-          stopStreaming();
-          const finalText = lastFinalTextRef.current;
-          lastFinalTextRef.current = null;
-          if (finalText !== null) {
-            finishAssistant(
-              (message) => ({ ...message, streaming: false, thinking: false }),
-              finalText,
-            );
-          }
+          finalizeAssistant((message) => ({
+            ...message,
+            streaming: false,
+            thinking: false,
+          }));
           if (abortingRef.current) reportAbort();
           abortingRef.current = false;
           return;
@@ -354,14 +325,14 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
     },
     [
       appendError,
-      applyToAssistant,
       beginWaiting,
       clearWaiting,
       endWaiting,
-      finishAssistant,
+      finalizeAssistant,
+      patchAssistant,
       reportAbort,
       setRunningSafe,
-      stopStreaming,
+      startAssistant,
     ],
   );
 
@@ -378,7 +349,11 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
           return;
         case "closed":
           setRunningSafe(false);
-          stopStreaming();
+          finalizeAssistant((message) => ({
+            ...message,
+            streaming: false,
+            thinking: false,
+          }));
           clearWaiting();
           setBridgeError(record.reason);
           return;
@@ -404,49 +379,63 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
     })();
 
     return off;
-  }, [client, clearWaiting, handleEvent, setRunningSafe, stopStreaming]);
+  }, [client, clearWaiting, finalizeAssistant, handleEvent, setRunningSafe]);
 
   const loadSessionList = useCallback(async (): Promise<AgentSessionSummary[]> => {
     const data = await client.sessionList();
     return data.sessions;
   }, [client]);
 
+  const openSessionBrowser = useCallback(() => {
+    setSessionBrowser({ loading: true, error: null, sessions: [] });
+    loadSessionList()
+      .then((sessions) => {
+        setSessionBrowser((current) =>
+          current ? { loading: false, error: null, sessions } : current,
+        );
+      })
+      .catch((error: unknown) => {
+        setSessionBrowser((current) =>
+          current ? { loading: false, error: describe(error), sessions: [] } : current,
+        );
+      });
+  }, [loadSessionList]);
+
+  const closeSessionBrowser = useCallback(() => setSessionBrowser(null), []);
+
   const switchSession = useCallback(
-    (target: string) => {
-      const failed = (error: unknown) => appendError(describe(error));
-      loadSessionList()
-        .then(async (list) => {
-          const found = resolveSession(list, target);
-          if (!found) throw new Error(`找不到会话 "${target}"，用 /sessions 查看列表`);
-          const data = await client.switchSession(found.id);
-          assistantIdRef.current = null;
-          setRunningSafe(false);
-          setRunStartedAt(null);
-          clearWaiting();
-          setMessages([
-            ...toSessionMessages(data.entries),
-            {
-              id: `send-${(counterRef.current += 1)}`,
-              role: "notice",
-              title: "SESSION",
-              text: `已切换到会话 ${data.summary.id}（${sessionTimeFormatter.format(
-                new Date(data.summary.startedAt),
-              )}），接下来的消息会追加到这个会话里。`,
-              createdAt: Date.now(),
-              error: null,
-            },
-          ]);
-          setMode(data.summary.mode);
-          setSessionId(data.summary.id);
-          setRuntime((current) =>
-            current
-              ? { ...current, sessionId: data.summary.id, mode: data.summary.mode }
-              : current,
-          );
-        })
-        .catch(failed);
+    async (target: string): Promise<void> => {
+      const list = await loadSessionList();
+      const found = resolveSession(list, target);
+      if (!found) throw new Error(`找不到会话 "${target}"`);
+      const data = await client.switchSession(found.id);
+      assistantIdRef.current = null;
+      setRunningSafe(false);
+      setRunStartedAt(null);
+      clearWaiting();
+      setMessages([
+        ...toSessionMessages(data.entries),
+        {
+          id: `send-${(counterRef.current += 1)}`,
+          role: "notice",
+          title: "SESSION",
+          text: `已切换到会话 ${data.summary.id}（${sessionTimeFormatter.format(
+            new Date(data.summary.startedAt),
+          )}），接下来的消息会追加到这个会话里。`,
+          createdAt: Date.now(),
+          error: null,
+        },
+      ]);
+      setMode(data.summary.mode);
+      setSessionId(data.summary.id);
+      setRuntime((current) =>
+        current
+          ? { ...current, sessionId: data.summary.id, mode: data.summary.mode }
+          : current,
+      );
+      setSessionBrowser(null);
     },
-    [appendError, clearWaiting, client, loadSessionList, setRunningSafe],
+    [clearWaiting, client, loadSessionList, setRunningSafe],
   );
 
   const runCommand = useCallback(
@@ -507,18 +496,10 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
           });
           return;
         case "sessions.list":
-          loadSessionList()
-            .then((list) => {
-              appendNotice({
-                title: "SESSIONS",
-                text: formatSessionList(list, runtime?.sessionsDir ?? ""),
-                error: null,
-              });
-            })
-            .catch(failed);
+          openSessionBrowser();
           return;
         case "sessions.switch":
-          switchSession(action.target);
+          switchSession(action.target).catch(failed);
           return;
         case "mode.show":
           appendNotice({
@@ -554,8 +535,8 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
       appendNotice,
       clearWaiting,
       client,
-      loadSessionList,
       mode,
+      openSessionBrowser,
       running,
       runtime,
       setRunningSafe,
@@ -621,42 +602,31 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
       abortReportedRef.current = false;
       abortingRef.current = false;
 
-      const assistantId = nextId();
-      const assistantMessage: AssistantMessage = {
-        id: assistantId,
-        role: "assistant",
-        text: "",
-        createdAt: Date.now(),
-        startedAt: Date.now(),
-        streaming: true,
-        thinking: true,
-        error: null,
-      };
-      assistantIdRef.current = assistantId;
-      lastFinalTextRef.current = null;
       setRunningSafe(true);
       setRunStartedAt(now);
       runBaseRef.current = now;
       pausedMsRef.current = 0;
       setWaitingForUser(false);
-      setMessages((current) => [...current, userMessage, assistantMessage]);
+      setMessages((current) => [...current, userMessage]);
 
       client.prompt(trimmed).catch((error: unknown) => {
         const reason = describe(error);
-        assistantIdRef.current = null;
         setRunningSafe(false);
         setRunStartedAt(null);
         clearWaiting();
-        setMessages((current) =>
-          current.map((entry) =>
-            entry.id === assistantId && entry.role === "assistant"
-              ? { ...entry, streaming: false, thinking: false, error: reason }
-              : entry,
-          ),
-        );
+        if (assistantIdRef.current !== null) {
+          finalizeAssistant((message) => ({
+            ...message,
+            streaming: false,
+            thinking: false,
+            error: reason,
+          }));
+        } else {
+          appendError(reason);
+        }
       });
     },
-    [client, clearWaiting, nextId, runCommand, setRunningSafe],
+    [appendError, clearWaiting, client, finalizeAssistant, nextId, runCommand, setRunningSafe],
   );
 
   const stop = useCallback(() => {
@@ -714,6 +684,9 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
     answerConfirm,
     answerDecision,
     sessionId,
+    sessionBrowser,
+    closeSessionBrowser,
+    switchSession,
   };
 }
 
@@ -798,6 +771,8 @@ function toSessionMessages(entries: AgentSessionEntry[]): ChatMessage[] {
             status: entry.isError ? "error" : "ok",
             output: entry.output,
             createdAt: entry.at,
+            startedAt: entry.durationMs !== undefined ? entry.at - entry.durationMs : entry.at,
+            finishedAt: entry.durationMs !== undefined ? entry.at : null,
             error: entry.isError ? entry.output || "工具执行失败" : null,
           };
         case "error":
@@ -824,19 +799,3 @@ const sessionTimeFormatter = new Intl.DateTimeFormat(undefined, {
   second: "2-digit",
   hour12: false,
 });
-
-function formatSessionList(sessions: AgentSessionSummary[], dir: string): string {
-  const lines = sessions.map((session, index) => {
-    const current = session.current ? "  ← 当前" : "";
-    const preview = session.preview || "(还没有消息)";
-    return `${index + 1}. ${session.id}${current}\n   ${sessionTimeFormatter.format(
-      new Date(session.startedAt),
-    )} · ${session.userMessages} 问 / ${session.assistantMessages} 答 · ${preview}`;
-  });
-  const head = lines.length > 0 ? lines.join("\n") : "还没有会话。";
-  const tail = [
-    "用 /sessions <序号> 切换过去继续聊，新消息会追加到那个会话。",
-    `会话文件：${dir}`,
-  ].join("\n");
-  return `${head}\n\n${tail}`;
-}

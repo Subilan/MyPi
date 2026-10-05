@@ -105,6 +105,7 @@ export type AgentSessionEntry =
       args?: unknown;
       isError: boolean;
       output: string;
+      durationMs?: number;
     }
   | { role: "error"; at: number; text: string }
   | { role: "notice"; at: number; title: string; text: string };
@@ -142,8 +143,8 @@ export interface AgentMessageEndData {
   text?: string;
 }
 
-export interface AgentTextDeltaData {
-  delta: string;
+export interface AgentAssistantTextData {
+  text: string;
 }
 
 export interface AgentRunErrorData {

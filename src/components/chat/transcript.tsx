@@ -5,8 +5,9 @@ import { DecisionCard } from "@/components/chat/decision-card";
 import { DeliveryCard } from "@/components/chat/delivery-card";
 import { Markdown } from "@/components/chat/markdown";
 import { ThinkingIndicator } from "@/components/chat/thinking-indicator";
+import { ToolTimer } from "@/components/chat/tool-timer";
 import { parseCommand } from "@/lib/chat/commands";
-import type { ChatMessage } from "@/lib/chat/types";
+import type { ChatMessage, ToolMessage } from "@/lib/chat/types";
 import { cn } from "@/lib/utils";
 
 const STICK_THRESHOLD_PX = 96;
@@ -22,6 +23,51 @@ const TOOL_STYLES: Record<"running" | "ok" | "error", string> = {
   ok: "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100",
   error: ERROR_BLOCK,
 };
+
+const BASH_DEFAULT_TIMEOUT_MS = 120_000;
+const BASH_MIN_TIMEOUT_MS = 1_000;
+const BASH_MAX_TIMEOUT_MS = 600_000;
+
+function argObject(args: unknown): Record<string, unknown> {
+  return args && typeof args === "object" ? (args as Record<string, unknown>) : {};
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function readDetail(args: Record<string, unknown>): string {
+  const path = typeof args.path === "string" ? args.path : "";
+  const offset =
+    typeof args.offset === "number" && args.offset > 0 ? Math.floor(args.offset) : null;
+  const limit = typeof args.limit === "number" && args.limit > 0 ? Math.floor(args.limit) : null;
+  if (offset !== null && limit !== null) return `${path}:${offset}-${offset + limit - 1}`;
+  if (offset !== null) return `${path}:${offset}+`;
+  if (limit !== null) return `${path}:1-${limit}`;
+  return path;
+}
+
+function toolDetail(message: ToolMessage): string {
+  const args = argObject(message.args);
+  if (message.name === "Bash") return typeof args.command === "string" ? args.command : "";
+  if (message.name === "Read") return readDetail(args);
+  if (message.name === "Edit") return typeof args.path === "string" ? args.path : "";
+  if (message.name === "Write") {
+    const path = typeof args.path === "string" ? args.path : "";
+    const content = typeof args.content === "string" ? args.content : "";
+    const bytes = new TextEncoder().encode(content).length;
+    return path ? `${path} (${formatBytes(bytes)})` : "";
+  }
+  return formatArgs(message.args);
+}
+
+function bashTimeoutMs(args: unknown): number {
+  const value = argObject(args).timeout;
+  if (typeof value !== "number" || !Number.isFinite(value)) return BASH_DEFAULT_TIMEOUT_MS;
+  return Math.min(Math.max(value, BASH_MIN_TIMEOUT_MS), BASH_MAX_TIMEOUT_MS);
+}
 
 function formatArgs(args: unknown): string {
   if (args === undefined || args === null) return "";
@@ -68,6 +114,10 @@ export function Transcript({
   const stickRef = useRef(true);
 
   const emptyHint = messages.length === 0 && !(mode === "deliver" && running);
+  const streamingAssistant = messages.some(
+    (message) => message.role === "assistant" && message.streaming,
+  );
+  const showWorking = running && !waitingForUser && (mode === "deliver" || !streamingAssistant);
 
   useLayoutEffect(() => {
     const node = containerRef.current;
@@ -98,9 +148,12 @@ export function Transcript({
             />
           ))
         )}
-        {mode === "deliver" && running && !waitingForUser ? (
+        {showWorking ? (
           <div className="px-4 py-3 text-[15px] leading-7">
-            <ThinkingIndicator label="Working" startedAt={runStartedAt ?? Date.now()} />
+            <ThinkingIndicator
+              label={mode === "deliver" ? "Working" : "Thinking"}
+              startedAt={runStartedAt ?? Date.now()}
+            />
           </div>
         ) : null}
       </div>
@@ -195,13 +248,29 @@ function MessageBody({
     if (message.name === "request_user_decision") {
       return <DecisionCard message={message} onAnswer={onDecisionAnswer} />;
     }
-    const args = formatArgs(message.args);
+    const detail = toolDetail(message);
+    const showTimer = message.status === "running" || message.finishedAt !== null;
     return (
-      <div className={cn("px-4 py-3 text-[15px] leading-7", TOOL_STYLES[message.status])}>
-        <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+      <div className="text-[15px] leading-7">
+        <p
+          className={cn(
+            "flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-4 py-3",
+            TOOL_STYLES[message.status],
+          )}
+        >
           <span className="font-semibold">{message.name}</span>
-          {args ? <span className="min-w-0 break-all opacity-80">{args}</span> : null}
+          {detail ? <span className="min-w-0 break-all">{detail}</span> : null}
+          {showTimer ? (
+            <span className="ml-auto shrink-0 tabular-nums">
+              <ToolTimer
+                startedAt={message.startedAt}
+                finishedAt={message.finishedAt}
+                timeoutMs={message.name === "Bash" ? bashTimeoutMs(message.args) : undefined}
+              />
+            </span>
+          ) : null}
         </p>
+        {message.error ? <ErrorBlock text={message.error} /> : null}
       </div>
     );
   }

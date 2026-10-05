@@ -112,7 +112,9 @@ sidecar 启动时读一次配置，改完要重启应用。provider 的白名单
 
 ## 界面行为
 
-聊天记录是一个 `AgentMessage` 列表：`message_start` 建气泡、`text_delta` 追加文本、`message_end` 收尾。`message_end` 里 sidecar 会附上这条 assistant 消息的最终文本，前端用它校正气泡内容，并把同一轮里因为事件顺序被拆开、又没有 tool 卡片相隔的多个 assistant 气泡合并回一条；同一轮出现过 tool 卡片时按原样分开，工具轮里的多条消息不受影响。这套校正兼做兜底：就算流式拼接的文本与最终文本不一致，界面也会回到模型真正输出的内容。思考阶段前端只拿到 `thinking_start` / `thinking_end`，`thinking_delta` 在 sidecar 里就被丢掉了，所以思考内容不会离开 sidecar 进程。模型报错时 `message_end` 带 `stopReason: "error"` 和 `errorMessage`，显示在气泡里；sidecar 自己启动失败这类问题走 `run_error` 事件。指令执行失败（比如 `/cd` 指向一个不存在的目录）和用户主动中止都渲染成一条独立的 `error` 行，浅红底，不挂在用户消息内部；中止那条的文本是「已中止」。
+聊天记录是一个 `AgentMessage` 列表，前端直接跟 agent-core 的消息生命周期走，不做 delta 累加。pi-agent-core 在 `message_update` 里带的是这条 assistant 消息的完整快照（`event.message`），sidecar 只把其中的文本投影成 `assistant_text`，前端每条都整体替换气泡文本；`message_start` 开一条新的 assistant 气泡并置为思考态，`message_end` 用最终消息收尾，文本为空又没有报错的气泡会被丢掉（工具调用轮就是靠这一条丢掉的，工具本身在 `tool_execution_start` 时单独成行）。这样既不会把一段文本拆成两个气泡，也没有拼错或漏拼的可能。思考阶段前端只拿到 `message_start` 的思考态，`thinking_delta` 在 sidecar 里就被丢掉了，所以思考内容不会离开 sidecar 进程。模型报错时 `message_end` 带 `stopReason: "error"` 和 `errorMessage`，显示在气泡里；sidecar 自己启动失败这类问题走 `run_error` 事件。指令执行失败（比如 `/cd` 指向一个不存在的目录）和用户主动中止都渲染成一条独立的 `error` 行，浅红底，不挂在用户消息内部；中止那条的文本是「已中止」。
+
+输入框关掉了 WebView 在 macOS 上自带的文本辅助：`spellCheck` / `autocorrect` / `autocapitalize` / `autocomplete` / `writingsuggestions` 全部关闭，避免自动更正、拼写提示与行内补全；长按字母弹出的标音变体是 AppKit 的 press-and-hold 行为，在 Rust 侧把 `ApplePressAndHoldEnabled` 写进 app 的 `NSUserDefaults` 关掉。输入法组合期间的 Enter 交给输入法：keydown 先看原生事件的 `isComposing`，再看自己维护的 composition 状态，`keyCode === 229` 也跳过；组合结束后的 100ms 内按 Enter 不提交，补上 WebKit 上确认组合那次 Enter 的 `isComposing` 为 false 的差异。
 
 agent 的回复走 `src/components/chat/markdown.tsx`，用 react-markdown 渲染，带 remark-gfm（表格、删除线、任务列表）、remark-math + rehype-katex（`$...$` 行内公式与 `$$...$$` 块级公式，样式来自 katex 自带的 CSS）。正文里的单换行按 CommonMark 折叠成空格，不产生断行；段落靠空行（`\n\n`）划分。之前用过 remark-breaks 把单换行渲染成 `<br>`，但实测 deepseek-flash 会把 `\n` 当排版手段频繁输出（20 轮里 106 个单换行，其中 9 个落在正文句中），全渲染成硬换行后看起来像 bug，所以去掉了。标题、列表、引用、代码块、表格的样式用主题变量写在 `components` 映射里，没有引入 typography 插件；代码块只有底色，没有语法高亮。块级公式在 `index.css` 里补了横向滚动，长公式不会把聊天撑宽。流式输出时每来一段就重新解析一次，光标用 `::after` 挂在最后一个块级元素尾部，不会多出一行。链接不靠 WebView 自己跳转，而是 preventDefault 后交给 `tauri-plugin-opener` 用系统浏览器打开。用户自己发的话不做 markdown 解析，保持原样显示。
 
@@ -123,7 +125,7 @@ agent 的回复走 `src/components/chat/markdown.tsx`，用 react-markdown 渲�
 | 指令 | 作用 |
 | --- | --- |
 | `/clear`、`/new` | 结束当前会话，开一个新的：清空模型上下文与界面上的聊天记录，旧会话留在磁盘上 |
-| `/sessions` | 列出当前与历史会话 |
+| `/sessions` | 打开独立的会话列表页，用 ↑ / ↓ 选择、Enter 或鼠标单击切换，Esc 返回 |
 | `/sessions <序号\|id>` | 切换到某个历史会话，接着往下聊 |
 | `/system` | 在聊天记录里展示当前系统提示词 |
 | `/system edit` | 打开编辑器修改系统提示词，子命令支持前缀缩略（`e` / `ed` / `edi` / `edit`） |
@@ -137,13 +139,11 @@ agent 的回复走 `src/components/chat/markdown.tsx`，用 react-markdown 渲�
 
 ## 会话
 
-会话由 sidecar 记录，一个会话一个 JSONL 文件，存在 `~/.agent-runbook/sessions/`（`AGENT_RUNBOOK_SESSIONS` 可改目录）。文件名就是会话 id，形如 `20260205-102231-a1b2`，前缀是本地时间，末尾四位随机数避免同一秒重名；里面的时间戳是 epoch 毫秒，所以 `/sessions` 里的顺序按 id 倒序排。每个文件的第一行是会话头，记下 id、开始时间、模式、工作目录、provider 与 model。之后每行一条记录，存的是 agent 侧真实的消息对象：用户消息、assistant 消息（去掉 thinking 部分）、tool result，另有运行错误与模式、工作目录的变更。assistant 的思考内容不落盘，文件权限 0600。
-
-sidecar 会把 `text_delta` 拼起来与 `message_end` 带来的最终文本核对，不一致时额外写一条 `delta_mismatch` 记录（两份文本都留下）；若 `text_delta` 落在任何消息之外（例如 `message_end` 之后才到），会写一条 `delta_orphan` 记录。两种情况都会在 stderr 打一条 warn，`/sessions` 回看时显示成 `DELTA MISMATCH` / `ORPHAN DELTA` 通知。这两条记录是给偶发渲染异常用的证据，正常会话不会出现。
+会话由 sidecar 记录，一个会话一个 JSONL 文件，存在 `~/.agent-runbook/sessions/`（`AGENT_RUNBOOK_SESSIONS` 可改目录）。文件名就是会话 id，形如 `20260205-102231-a1b2c3d`，前缀是本地时间，末尾七位随机十六进制（与 git short SHA 同宽）避免同一秒重名；里面的时间戳是 epoch 毫秒，所以 `/sessions` 里的顺序按 id 倒序排。每个文件的第一行是会话头，记下 id、开始时间、模式、工作目录、provider 与 model。之后每行一条记录，存的是 agent 侧真实的消息对象：用户消息、assistant 消息（去掉 thinking 部分）、tool result，另有运行错误与模式、工作目录的变更。tool 记录额外带一个 `durationMs`，从 `tool_execution_start` 到 `tool_execution_end` 计时，供前端回看时显示工具耗时；早期写入的旧记录没有这个字段，回看时不显示耗时。assistant 的思考内容不落盘，文件权限 0600。
 
 每条会话的聊天记录与模型上下文都从这份文件重建，所以会话之间完全独立：在 A 里聊到一半切到 B，A 的文件不动；切回 A 时历史照旧，接着发消息就追加在 A 的同一份文件里。切换时 sidecar 按消息里的 `toolCall` / `toolResult` 配对校验历史，把当前模式不支持的工具调用、以及缺少配对结果的残缺调用剔掉，再把工具集与系统提示词按当前配置重建，避免模型看到不存在的工具或悬空的工具结果；会话记录的模式会跟着恢复，但系统提示词与工作目录仍用当前配置。
 
-每次 `/clear` 或 `/new` 结束当前会话并开一个新的；应用重启也算新会话，不会自动恢复上一次的上下文。没有产生任何记录的会话不建文件，也不出现在列表里。`/sessions` 列出最近的 50 个会话，标出哪个是当前会话，每行带开始时间、问答条数与首条用户消息的摘要，末尾给出会话目录。`/sessions <序号>` 或 `/sessions <id 前缀>` 切换过去，聊天记录换成该会话，并追加一条 `SESSION` 提示说明接下来会写进哪个会话。
+每次 `/clear` 或 `/new` 结束当前会话并开一个新的；应用重启也算新会话，不会自动恢复上一次的上下文。没有产生任何记录的会话不建文件，也不出现在列表里。`/sessions` 不在聊天记录里输出列表，而是切到一个独立页面，左上角是 `SESSIONS` 标题，下面列出最近的 50 个会话，每行是会话 id、是否当前会话、右侧的开始时间与首条用户消息的摘要，没有额外的顶栏与底栏。键盘 ↑ / ↓ 移动选中行、Enter 切换，鼠标单击某一行也直接切换，Esc 返回聊天页。切换后聊天记录换成该会话，并追加一条 `SESSION` 提示说明接下来会写进哪个会话。`/sessions <序号>` 或 `/sessions <id 前缀>` 仍可直接在当前页切换，不必先打开列表页。
 
 这份记录同时也是排查模型输出的依据：原始 JSONL 里的转义换行就是模型当时返回的文本。
 
@@ -151,7 +151,7 @@ sidecar 会把 `text_delta` 拼起来与 `message_end` 带来的最终文本核�
 
 模式是 session 级的状态，切在内存里；切换会话时会恢复该会话记录里的模式，重启应用则回到 Regular。sidecar 是模式的唯一来源，前端连上后会从 `hello` 返回的 runtime 里对齐一次，每次切换会话也会用返回的会话摘要对齐，所以刷新 WebView 不会让两边错位。当前模式可以用 `/mode` 或 `/info` 查看。
 
-Regular 就是原来的行为：思考阶段只显示 `Thinking...` 与已耗时，工具调用过程占整宽底色，正文照常流式渲染。
+Regular 就是原来的行为：思考阶段只显示 `Thinking...` 与已耗时，工具调用渲染成一行，正文照常流式渲染。
 
 Deliver 面向“让 agent 交活”的场景：
 
@@ -197,13 +197,13 @@ agent 在 Regular 模式下有四个工具，实现在 `sidecar/src/tools.ts`；
 | `Read` | `path`、可选的 `offset` / `limit` | 读取文本文件，拒绝二进制；单次读取超过 20 万字符会截断并提示用 offset/limit 续读。图片按魔数识别（png / jpeg / gif / webp / bmp），以图像内容返回给多模态模型 |
 | `Edit` | `path`、`oldText`、`newText` | 精确替换文件中唯一出现的一段原文，匹配 0 处或多处都会报错 |
 | `Write` | `path`、`content` | 覆盖写入，父目录不存在时递归创建 |
-| `Bash` | `command`、可选的 `timeout` | 在工作目录下跑 shell（POSIX 走 `$SHELL -lc`，Windows 走 `cmd /c`），返回退出码、stdout、stderr；默认超时 120 秒，可调到 600 秒，支持随中断一起终止 |
+| `Bash` | `command`、可选的 `timeout` | 在工作目录下跑 shell（POSIX 走 `$SHELL -lc`，Windows 走 `cmd /c`），返回退出码、stdout、stderr；默认超时 120 秒，可调到 600 秒，超时或中断时终止整个进程组，不留给子进程继续占着管道把结束时间拖后 |
 
 相对路径一律按当前工作目录解析，绝对路径直接用。工具失败时以 `isError` 结果返回给模型，而不是抛出中断整个 run。这些工具不设沙箱，以当前用户的权限读写文件、执行命令，换目录前请确认目标目录是可以放手的。
 
 `Read` 遇到图片时按魔数判断格式，读成 base64 以 `ImageContent` 返回，由 pi-ai 的 openai-completions 层拼成 `data:` URL 随 tool result 发给模型。是否支持图片、图片上限多少都取自模型的 `input` 与 `inputLimits`：当前模型不支持图片时返回一条可读的失败提示，图片字节数超上限时同样拒绝并提示先压缩，不会发出注定被 API 拒掉的大请求。
 
-工具调用在聊天记录里占一条整宽底色，基底样式与用户消息完全一致（同样的 `px-4 py-3`、字体与 15px/行高），刚触发时浅蓝底，执行成功转浅绿底，失败转浅红底，内部只渲染工具名和传入参数（紧凑 JSON，最多 400 字符）。前端的流式更新通道（`tool_execution_update`）已经就绪，但当前四个工具都不上报中间结果，块内也不展示输出。以前工具轮次会留下一个空白气泡，现在这种没有正文又没报错的 assistant 气泡会被移除，不会再有空的占位。
+工具调用在聊天记录里占一条整宽底色，行内左侧是加粗的工具名与主要参数，右侧右对齐一个实时耗时，基底样式仍是同样的 `px-4 py-3`、字体与 15px/行高：运行中浅蓝底、成功浅绿底、失败浅红底。Bash 显示 `耗时/超时`（超时取工具参数，缺省 120 秒），Read 在有 `offset` / `limit` 时把参数拼成 `path:起-止`，Edit 只显示路径，Write 在路径后附内容字节数；未知工具回退成工具名加紧凑 JSON 参数（最多 400 字符）。耗时在 1 秒以内每 0.1 秒刷新、超过 1 秒后每 1 秒刷新，工具结束时定格在最终值。切换会话回看历史时，工具行用会话记录里的 `durationMs` 显示同样的定点耗时，旧会话没记时长则不显示。工具失败时在那行下面再追加一块整宽的浅红错误详情，展示 sidecar 返回的完整输出，超时也走同一块（sidecar 在输出里附了 `[已超时 ...ms 并终止进程]`）。前端的流式更新通道（`tool_execution_update`）已经就绪，但当前四个工具都不上报中间结果，所以只有耗时是活的，输出只在失败时展示。以前工具轮次会留下一个空白气泡，现在这种没有正文又没报错的 assistant 气泡会被移除，不会再有空的占位。
 
 把外部文件拖进窗口，会在输入框光标处补上它的绝对路径（多个文件用空格分隔，路径原样插入、不加引号，方便直接交给四个工具使用）；拖进输入框区域时边线会高亮提示，在其他位置松手同样会插入。Tauri 默认开启了 `dragDropEnabled`，这个能力走 `getCurrentWebview().onDragDropEvent`，位置按 `devicePixelRatio` 换算成 CSS 像素后与输入框边界比较，只用来控制高亮。在浏览器里跑 `npm run dev` 时拿不到绝对路径，走 HTML5 drop 回退，只能插入文件名。
 

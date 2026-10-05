@@ -34,9 +34,7 @@ type StoredRecord =
   | SessionHeader
   | { kind: "user"; at: number; message: AgentMessage }
   | { kind: "assistant"; at: number; message: AgentMessage }
-  | { kind: "tool"; at: number; message: AgentMessage }
-  | { kind: "delta_mismatch"; at: number; delta: string; final: string }
-  | { kind: "delta_orphan"; at: number; delta: string }
+  | { kind: "tool"; at: number; message: AgentMessage; durationMs?: number }
   | { kind: "error"; at: number; text: string }
   | { kind: "mode"; at: number; mode: ChatMode }
   | { kind: "workdir"; at: number; path: string };
@@ -57,8 +55,9 @@ export class SessionStore {
   #id: string;
   #meta: SessionMeta | null = null;
   #started = false;
-  #pendingText: string | null = null;
   #warned = false;
+  #toolStartedAt = new Map<string, number>();
+  #toolDurations = new Map<string, number>();
 
   constructor(dir: string = resolveSessionsDir()) {
     this.#dir = dir;
@@ -81,7 +80,8 @@ export class SessionStore {
     this.#id = newSessionId();
     this.#meta = { ...meta };
     this.#started = false;
-    this.#pendingText = null;
+    this.#toolStartedAt.clear();
+    this.#toolDurations.clear();
   }
 
   resume(id: string): void {
@@ -93,12 +93,12 @@ export class SessionStore {
     this.#id = id;
     this.#meta = null;
     this.#started = true;
-    this.#pendingText = null;
+    this.#toolStartedAt.clear();
+    this.#toolDurations.clear();
   }
 
   user(text: string): void {
     if (!text) return;
-    this.#pendingText = null;
     const at = Date.now();
     this.#write({
       kind: "user",
@@ -109,38 +109,11 @@ export class SessionStore {
 
   event(event: AgentEvent): void {
     switch (event.type) {
-      case "message_start": {
-        if (event.message.role === "assistant") this.#pendingText = "";
-        return;
-      }
-      case "message_update": {
-        const inner = event.assistantMessageEvent;
-        if (inner.type === "text_delta") {
-          if (this.#pendingText === null) {
-            this.#write({ kind: "delta_orphan", at: Date.now(), delta: inner.delta });
-            process.stderr.write(
-              "[sidecar] warn: 收到不在任何消息内的 text_delta（可能发生在 message_end 之后），已记入会话\n",
-            );
-          } else {
-            this.#pendingText += inner.delta;
-          }
-        }
-        return;
-      }
       case "message_end": {
         if (event.message.role !== "assistant") return;
-        const deltaText = this.#pendingText ?? "";
-        this.#pendingText = null;
         const message = event.message;
         const content = message.content.filter((part) => part.type !== "thinking");
         if (content.length === 0 && !message.errorMessage) return;
-        const finalText = messageText(message);
-        if (deltaText !== finalText) {
-          this.#write({ kind: "delta_mismatch", at: Date.now(), delta: deltaText, final: finalText });
-          process.stderr.write(
-            `[sidecar] warn: 流式文本与最终文本不一致（delta ${deltaText.length} 字符，final ${finalText.length} 字符），已记入会话\n`,
-          );
-        }
         this.#write({
           kind: "assistant",
           at: message.timestamp,
@@ -148,9 +121,23 @@ export class SessionStore {
         });
         return;
       }
+      case "tool_execution_start": {
+        this.#toolStartedAt.set(event.toolCallId, Date.now());
+        return;
+      }
+      case "tool_execution_end": {
+        const startedAt = this.#toolStartedAt.get(event.toolCallId);
+        this.#toolStartedAt.delete(event.toolCallId);
+        if (startedAt !== undefined) {
+          this.#toolDurations.set(event.toolCallId, Math.max(0, Date.now() - startedAt));
+        }
+        return;
+      }
       case "turn_end": {
         for (const result of event.toolResults) {
-          this.#write({ kind: "tool", at: result.timestamp, message: result });
+          const durationMs = this.#toolDurations.get(result.toolCallId);
+          this.#toolDurations.delete(result.toolCallId);
+          this.#write({ kind: "tool", at: result.timestamp, message: result, durationMs });
         }
         return;
       }
@@ -234,6 +221,7 @@ export class SessionStore {
               args: argsByCall.get(message.toolCallId),
               isError: message.isError,
               output: messageText(message, true),
+              durationMs: record.durationMs,
             });
             history.push(message);
           }
@@ -241,24 +229,6 @@ export class SessionStore {
         }
         case "error":
           entries.push({ role: "error", at: record.at, text: record.text });
-          break;
-        case "delta_mismatch":
-          entries.push({
-            role: "notice",
-            at: record.at,
-            title: "DELTA MISMATCH",
-            text: ["流式文本与最终文本不一致。", "", "delta：", record.delta, "", "final：", record.final].join(
-              "\n",
-            ),
-          });
-          break;
-        case "delta_orphan":
-          entries.push({
-            role: "notice",
-            at: record.at,
-            title: "ORPHAN DELTA",
-            text: `收到不在任何消息内的 text_delta：\n${record.delta}`,
-          });
           break;
         case "mode":
           entries.push({ role: "notice", at: record.at, title: "MODE", text: record.mode });
@@ -385,9 +355,9 @@ function newSessionId(now: Date = new Date()): string {
     pad(now.getMinutes()),
     pad(now.getSeconds()),
   ].join("");
-  const suffix = Math.floor(Math.random() * 0x10000)
+  const suffix = Math.floor(Math.random() * 0x10000000)
     .toString(16)
-    .padStart(4, "0");
+    .padStart(7, "0");
   return `${stamp}-${suffix}`;
 }
 

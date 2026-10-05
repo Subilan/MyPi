@@ -201,13 +201,10 @@ function projectEvent(event: AgentEvent): { name: string; data: unknown } | null
   switch (event.type) {
     case "message_update": {
       const inner = event.assistantMessageEvent;
-      if (inner.type === "text_delta") {
-        return { name: "text_delta", data: { delta: inner.delta } };
+      if (inner.type === "text_start" || inner.type === "text_delta" || inner.type === "text_end") {
+        return { name: "assistant_text", data: { text: messageText(event.message) } };
       }
-      if (inner.type === "thinking_delta") {
-        return null;
-      }
-      return { name: inner.type, data: {} };
+      return null;
     }
     case "message_start":
       return { name: event.type, data: { role: event.message.role } };

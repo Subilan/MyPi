@@ -16,6 +16,9 @@ fn app_info() -> serde_json::Value {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "macos")]
+    disable_press_and_hold();
+
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(agent::AgentProcess::default())
@@ -37,4 +40,13 @@ pub fn run() {
                 agent::stop(app);
             }
         });
+}
+
+#[cfg(target_os = "macos")]
+fn disable_press_and_hold() {
+    use objc2_foundation::{NSUserDefaults, NSString};
+    NSUserDefaults::standardUserDefaults().setBool_forKey(
+        false,
+        &NSString::from_str("ApplePressAndHoldEnabled"),
+    );
 }

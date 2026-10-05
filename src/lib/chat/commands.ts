@@ -93,7 +93,7 @@ const SPECS: readonly CommandSpec[] = [
   {
     name: "sessions",
     aliases: ["session"],
-    description: "列出会话，或用序号 / id 切换到一个历史会话继续聊",
+    description: "打开会话列表页，或用序号 / id 直接切换到一个历史会话",
     usage: "/sessions [序号|id]",
     parse: (args) => {
       if (args.length === 0) return { type: "sessions.list" };

@@ -3,6 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { toast } from "sonner";
 import { Composer } from "@/components/chat/composer";
 import { Transcript } from "@/components/chat/transcript";
+import { SessionsPane } from "@/components/sessions/sessions-pane";
 import { Toaster } from "@/components/ui/sonner";
 import { useAgentChat } from "@/hooks/use-agent-chat";
 import { useEditorDocument } from "@/hooks/use-editor-document";
@@ -84,6 +85,12 @@ export default function App() {
             onClose={close}
           />
         </Suspense>
+      ) : chat.sessionBrowser ? (
+        <SessionsPane
+          state={chat.sessionBrowser}
+          onSelect={chat.switchSession}
+          onClose={chat.closeSessionBrowser}
+        />
       ) : (
         <main className="flex h-svh flex-col bg-background text-foreground">
           {notice ? (

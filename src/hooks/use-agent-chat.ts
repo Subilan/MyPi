@@ -170,24 +170,51 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
     [nextId],
   );
 
-  const finishAssistant = useCallback((patch: (message: AssistantMessage) => AssistantMessage) => {
-    const id = assistantIdRef.current;
-    assistantIdRef.current = null;
-    if (!id) return;
-    setMessages((current) => {
-      const index = current.findIndex((message) => message.id === id);
-      const found = current[index];
-      if (index < 0 || found.role !== "assistant") return current;
-      const patched = patch(found);
-      const next = current.slice();
-      if (!patched.text && !patched.error && !patched.streaming) {
-        next.splice(index, 1);
-        return next;
-      }
-      next[index] = patched;
-      return next;
-    });
-  }, []);
+  const finishAssistant = useCallback(
+    (patch: (message: AssistantMessage) => AssistantMessage, text?: string) => {
+      const id = assistantIdRef.current;
+      assistantIdRef.current = null;
+      setMessages((current) => {
+        let lastUser = -1;
+        for (let index = current.length - 1; index >= 0; index -= 1) {
+          if (current[index].role === "user") {
+            lastUser = index;
+            break;
+          }
+        }
+        const head = current.slice(0, lastUser + 1);
+        const tail = current.slice(lastUser + 1);
+        const separated = tail.some((entry) => entry.role === "tool");
+        let anchor = id === null ? -1 : tail.findIndex((entry) => entry.id === id);
+        if (anchor < 0) {
+          for (let index = tail.length - 1; index >= 0; index -= 1) {
+            if (tail[index].role === "assistant") {
+              anchor = index;
+              break;
+            }
+          }
+        }
+        const target = anchor >= 0 ? tail[anchor] : undefined;
+        if (!target || target.role !== "assistant") return current;
+        const patched = patch(text === undefined ? target : { ...target, text });
+        const drop = !patched.text && !patched.error && !patched.streaming;
+        const next: ChatMessage[] = [];
+        tail.forEach((entry, index) => {
+          if (entry.role !== "assistant") {
+            next.push(entry);
+            return;
+          }
+          if (index === anchor) {
+            if (!drop) next.push(patched);
+            return;
+          }
+          if (separated) next.push(entry);
+        });
+        return [...head, ...next];
+      });
+    },
+    [],
+  );
 
   const stopStreaming = useCallback(() => {
     setMessages((current) =>
@@ -218,12 +245,15 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
         case "message_end": {
           const end = data as AgentMessageEndData;
           if (end.role !== "assistant") return;
-          finishAssistant((message) => ({
-            ...message,
-            streaming: false,
-            thinking: false,
-            error: errorFor(end),
-          }));
+          finishAssistant(
+            (message) => ({
+              ...message,
+              streaming: false,
+              thinking: false,
+              error: errorFor(end),
+            }),
+            typeof end.text === "string" ? end.text : undefined,
+          );
           if (end.stopReason === "aborted") reportAbort();
           return;
         }

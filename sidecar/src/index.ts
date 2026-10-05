@@ -7,6 +7,7 @@ import {
   type AgentRuntimeInfo,
 } from "../../shared/protocol.ts";
 import { createAgentHost } from "./agent-host.ts";
+import { messageText } from "./session.ts";
 
 const host = createAgentHost(emitEvent);
 
@@ -215,6 +216,7 @@ function projectEvent(event: AgentEvent): { name: string; data: unknown } | null
       if (event.message.role === "assistant") {
         data.stopReason = event.message.stopReason;
         if (event.message.errorMessage) data.errorMessage = event.message.errorMessage;
+        data.text = messageText(event.message);
       }
       return { name: event.type, data };
     }

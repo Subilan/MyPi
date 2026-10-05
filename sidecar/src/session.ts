@@ -35,6 +35,7 @@ type StoredRecord =
   | { kind: "user"; at: number; message: AgentMessage }
   | { kind: "assistant"; at: number; message: AgentMessage }
   | { kind: "tool"; at: number; message: AgentMessage }
+  | { kind: "delta_mismatch"; at: number; delta: string; final: string }
   | { kind: "error"; at: number; text: string }
   | { kind: "mode"; at: number; mode: ChatMode }
   | { kind: "workdir"; at: number; path: string };
@@ -55,6 +56,7 @@ export class SessionStore {
   #id: string;
   #meta: SessionMeta | null = null;
   #started = false;
+  #pendingText: string | null = null;
   #warned = false;
 
   constructor(dir: string = resolveSessionsDir()) {
@@ -78,6 +80,7 @@ export class SessionStore {
     this.#id = newSessionId();
     this.#meta = { ...meta };
     this.#started = false;
+    this.#pendingText = null;
   }
 
   resume(id: string): void {
@@ -89,10 +92,12 @@ export class SessionStore {
     this.#id = id;
     this.#meta = null;
     this.#started = true;
+    this.#pendingText = null;
   }
 
   user(text: string): void {
     if (!text) return;
+    this.#pendingText = null;
     const at = Date.now();
     this.#write({
       kind: "user",
@@ -103,11 +108,31 @@ export class SessionStore {
 
   event(event: AgentEvent): void {
     switch (event.type) {
+      case "message_start": {
+        if (event.message.role === "assistant") this.#pendingText = "";
+        return;
+      }
+      case "message_update": {
+        const inner = event.assistantMessageEvent;
+        if (inner.type === "text_delta" && this.#pendingText !== null) {
+          this.#pendingText += inner.delta;
+        }
+        return;
+      }
       case "message_end": {
         if (event.message.role !== "assistant") return;
+        const deltaText = this.#pendingText ?? "";
+        this.#pendingText = null;
         const message = event.message;
         const content = message.content.filter((part) => part.type !== "thinking");
         if (content.length === 0 && !message.errorMessage) return;
+        const finalText = messageText(message);
+        if (deltaText !== finalText) {
+          this.#write({ kind: "delta_mismatch", at: Date.now(), delta: deltaText, final: finalText });
+          process.stderr.write(
+            `[sidecar] warn: 流式文本与最终文本不一致（delta ${deltaText.length} 字符，final ${finalText.length} 字符），已记入会话\n`,
+          );
+        }
         this.#write({
           kind: "assistant",
           at: message.timestamp,
@@ -208,6 +233,16 @@ export class SessionStore {
         }
         case "error":
           entries.push({ role: "error", at: record.at, text: record.text });
+          break;
+        case "delta_mismatch":
+          entries.push({
+            role: "notice",
+            at: record.at,
+            title: "DELTA MISMATCH",
+            text: ["流式文本与最终文本不一致。", "", "delta：", record.delta, "", "final：", record.final].join(
+              "\n",
+            ),
+          });
           break;
         case "mode":
           entries.push({ role: "notice", at: record.at, title: "MODE", text: record.mode });
@@ -345,7 +380,7 @@ function clip(text: string): string {
   return flat.length > PREVIEW_CHARS ? `${flat.slice(0, PREVIEW_CHARS)}…` : flat;
 }
 
-function messageText(message: AgentMessage, labelImages = false): string {
+export function messageText(message: AgentMessage, labelImages = false): string {
   const content = (message as { content?: unknown }).content;
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";

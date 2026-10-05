@@ -112,7 +112,7 @@ sidecar 启动时读一次配置，改完要重启应用。provider 的白名单
 
 ## 界面行为
 
-聊天记录是一个 `AgentMessage` 列表：`message_start` 建气泡、`text_delta` 追加文本、`message_end` 收尾。思考阶段前端只拿到 `thinking_start` / `thinking_end`，`thinking_delta` 在 sidecar 里就被丢掉了，所以思考内容不会离开 sidecar 进程。模型报错时 `message_end` 带 `stopReason: "error"` 和 `errorMessage`，显示在气泡里；sidecar 自己启动失败这类问题走 `run_error` 事件。指令执行失败（比如 `/cd` 指向一个不存在的目录）和用户主动中止都渲染成一条独立的 `error` 行，浅红底，不挂在用户消息内部；中止那条的文本是「已中止」。
+聊天记录是一个 `AgentMessage` 列表：`message_start` 建气泡、`text_delta` 追加文本、`message_end` 收尾。`message_end` 里 sidecar 会附上这条 assistant 消息的最终文本，前端用它校正气泡内容，并把同一轮里因为事件顺序被拆开、又没有 tool 卡片相隔的多个 assistant 气泡合并回一条；同一轮出现过 tool 卡片时按原样分开，工具轮里的多条消息不受影响。这套校正兼做兜底：就算流式拼接的文本与最终文本不一致，界面也会回到模型真正输出的内容。思考阶段前端只拿到 `thinking_start` / `thinking_end`，`thinking_delta` 在 sidecar 里就被丢掉了，所以思考内容不会离开 sidecar 进程。模型报错时 `message_end` 带 `stopReason: "error"` 和 `errorMessage`，显示在气泡里；sidecar 自己启动失败这类问题走 `run_error` 事件。指令执行失败（比如 `/cd` 指向一个不存在的目录）和用户主动中止都渲染成一条独立的 `error` 行，浅红底，不挂在用户消息内部；中止那条的文本是「已中止」。
 
 agent 的回复走 `src/components/chat/markdown.tsx`，用 react-markdown 渲染，带 remark-gfm（表格、删除线、任务列表）、remark-math + rehype-katex（`$...$` 行内公式与 `$$...$$` 块级公式，样式来自 katex 自带的 CSS）。正文里的单换行按 CommonMark 折叠成空格，不产生断行；段落靠空行（`\n\n`）划分。之前用过 remark-breaks 把单换行渲染成 `<br>`，但实测 deepseek-flash 会把 `\n` 当排版手段频繁输出（20 轮里 106 个单换行，其中 9 个落在正文句中），全渲染成硬换行后看起来像 bug，所以去掉了。标题、列表、引用、代码块、表格的样式用主题变量写在 `components` 映射里，没有引入 typography 插件；代码块只有底色，没有语法高亮。块级公式在 `index.css` 里补了横向滚动，长公式不会把聊天撑宽。流式输出时每来一段就重新解析一次，光标用 `::after` 挂在最后一个块级元素尾部，不会多出一行。链接不靠 WebView 自己跳转，而是 preventDefault 后交给 `tauri-plugin-opener` 用系统浏览器打开。用户自己发的话不做 markdown 解析，保持原样显示。
 
@@ -138,6 +138,8 @@ agent 的回复走 `src/components/chat/markdown.tsx`，用 react-markdown 渲�
 ## 会话
 
 会话由 sidecar 记录，一个会话一个 JSONL 文件，存在 `~/.agent-runbook/sessions/`（`AGENT_RUNBOOK_SESSIONS` 可改目录）。文件名就是会话 id，形如 `20260205-102231-a1b2`，前缀是本地时间，末尾四位随机数避免同一秒重名；里面的时间戳是 epoch 毫秒，所以 `/sessions` 里的顺序按 id 倒序排。每个文件的第一行是会话头，记下 id、开始时间、模式、工作目录、provider 与 model。之后每行一条记录，存的是 agent 侧真实的消息对象：用户消息、assistant 消息（去掉 thinking 部分）、tool result，另有运行错误与模式、工作目录的变更。assistant 的思考内容不落盘，文件权限 0600。
+
+sidecar 会把 `text_delta` 拼起来与 `message_end` 带来的最终文本核对，不一致时额外写一条 `delta_mismatch` 记录（两份文本都留下）并在 stderr 打一条 warn；`/sessions` 回看时会把它显示成一条 `DELTA MISMATCH` 通知。这条记录是给偶发渲染异常用的证据，正常会话不会出现。
 
 每条会话的聊天记录与模型上下文都从这份文件重建，所以会话之间完全独立：在 A 里聊到一半切到 B，A 的文件不动；切回 A 时历史照旧，接着发消息就追加在 A 的同一份文件里。切换时 sidecar 按消息里的 `toolCall` / `toolResult` 配对校验历史，把当前模式不支持的工具调用、以及缺少配对结果的残缺调用剔掉，再把工具集与系统提示词按当前配置重建，避免模型看到不存在的工具或悬空的工具结果；会话记录的模式会跟着恢复，但系统提示词与工作目录仍用当前配置。
 

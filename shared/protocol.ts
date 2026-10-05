@@ -139,6 +139,7 @@ export interface AgentMessageEndData {
   role: string;
   stopReason?: string;
   errorMessage?: string;
+  text?: string;
 }
 
 export interface AgentTextDeltaData {

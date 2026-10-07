@@ -2,17 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentSessionSummary } from "@shared/protocol";
 import { Badge } from "@/components/ui/badge";
 import type { SessionBrowserState } from "@/hooks/use-agent-chat";
+import { formatDateTime, formatRelative } from "@/lib/time";
 import { cn } from "@/lib/utils";
-
-const timeFormatter = new Intl.DateTimeFormat(undefined, {
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-});
 
 export function SessionsPane({
   state,
@@ -124,8 +115,11 @@ export function SessionsPane({
                           <span className="text-xs text-muted-foreground">切换中…</span>
                         ) : null}
                       </span>
-                      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                        {timeFormatter.format(new Date(session.startedAt))}
+                      <span
+                        className="shrink-0 text-xs text-muted-foreground"
+                        title={formatDateTime(session.startedAt)}
+                      >
+                        {formatRelative(session.startedAt)}
                       </span>
                     </span>
                     <span className="w-full truncate text-sm text-muted-foreground">

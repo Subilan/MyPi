@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { nowMs } from "@/lib/time";
 import type {
   AgentClearData,
   AgentCwdData,
@@ -125,12 +126,12 @@ export class AgentClient {
   }
 
   async waitUntilConnected(timeoutMs = 15000): Promise<void> {
-    const deadline = Date.now() + timeoutMs;
+    const deadline = nowMs() + timeoutMs;
     for (;;) {
       const status = await this.status();
       if (status.error) throw new Error(status.error);
       if (status.connected) return;
-      if (Date.now() >= deadline) {
+      if (nowMs() >= deadline) {
         throw new Error("agent sidecar did not start in time");
       }
       await new Promise((resolve) => setTimeout(resolve, 100));

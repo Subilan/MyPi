@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { formatDuration } from "@/lib/chat/duration";
+import { formatDuration, nowMs } from "@/lib/time";
 
 const DOT_INTERVAL_MS = 400;
 const TICK_MS = 200;
@@ -11,11 +11,11 @@ export function ThinkingIndicator({
   startedAt: number;
   label?: string;
 }) {
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState(nowMs);
 
   useEffect(() => {
-    setNow(Date.now());
-    const timer = window.setInterval(() => setNow(Date.now()), TICK_MS);
+    setNow(nowMs());
+    const timer = window.setInterval(() => setNow(nowMs()), TICK_MS);
     return () => window.clearInterval(timer);
   }, [startedAt]);
 

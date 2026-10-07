@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import dayjs from "dayjs";
 import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core";
 import type {
   AgentSessionData,
@@ -124,7 +125,7 @@ export class SessionStore {
 
   user(text: string): void {
     if (!text) return;
-    const at = Date.now();
+    const at = dayjs().valueOf();
     this.#append({
       kind: "user",
       at,
@@ -147,14 +148,14 @@ export class SessionStore {
         return;
       }
       case "tool_execution_start": {
-        this.#toolStartedAt.set(event.toolCallId, Date.now());
+        this.#toolStartedAt.set(event.toolCallId, dayjs().valueOf());
         return;
       }
       case "tool_execution_end": {
         const startedAt = this.#toolStartedAt.get(event.toolCallId);
         this.#toolStartedAt.delete(event.toolCallId);
         if (startedAt !== undefined) {
-          this.#toolDurations.set(event.toolCallId, Math.max(0, Date.now() - startedAt));
+          this.#toolDurations.set(event.toolCallId, Math.max(0, dayjs().valueOf() - startedAt));
         }
         return;
       }
@@ -173,15 +174,15 @@ export class SessionStore {
 
   error(text: string): void {
     if (!text) return;
-    this.#append({ kind: "error", at: Date.now(), text });
+    this.#append({ kind: "error", at: dayjs().valueOf(), text });
   }
 
   mode(mode: ChatMode): void {
-    this.#append({ kind: "mode", at: Date.now(), mode });
+    this.#append({ kind: "mode", at: dayjs().valueOf(), mode });
   }
 
   workdir(target: string): void {
-    this.#append({ kind: "workdir", at: Date.now(), path: target });
+    this.#append({ kind: "workdir", at: dayjs().valueOf(), path: target });
   }
 
   list(): AgentSessionSummary[] {
@@ -296,8 +297,8 @@ export class SessionStore {
     }
     return {
       id: this.#id,
-      startedAt: Date.now(),
-      updatedAt: Date.now(),
+      startedAt: dayjs().valueOf(),
+      updatedAt: dayjs().valueOf(),
       mode: this.#meta?.mode ?? "regular",
       workdir: this.#meta?.workdir ?? homedir(),
       userMessages: 0,
@@ -311,7 +312,7 @@ export class SessionStore {
   #append(record: StoredRecord): void {
     if (!this.#started) {
       const meta = this.#meta;
-      if (meta) this.#emitLine({ kind: "session", id: this.#id, at: Date.now(), ...meta });
+      if (meta) this.#emitLine({ kind: "session", id: this.#id, at: dayjs().valueOf(), ...meta });
       this.#started = true;
     }
     const id = `line${this.#lines}`;
@@ -438,17 +439,8 @@ function collectHistory(
   return chain.reverse();
 }
 
-function newSessionId(now: Date = new Date()): string {
-  const pad = (value: number, width = 2) => String(value).padStart(width, "0");
-  const stamp = [
-    now.getFullYear(),
-    pad(now.getMonth() + 1),
-    pad(now.getDate()),
-    "-",
-    pad(now.getHours()),
-    pad(now.getMinutes()),
-    pad(now.getSeconds()),
-  ].join("");
+function newSessionId(now = dayjs()): string {
+  const stamp = now.format("YYYYMMDD-HHmmss");
   const suffix = Math.floor(Math.random() * 0x10000000)
     .toString(16)
     .padStart(7, "0");

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { isTauriRuntime } from "@/lib/agent/client";
 import { parseCommand } from "@/lib/chat/commands";
 import { insertPaths } from "@/lib/chat/drop-paths";
+import { nowMs } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 const MAX_HEIGHT_PX = 200;
@@ -203,7 +204,7 @@ export function Composer({
           }}
           onCompositionEnd={() => {
             composingRef.current = false;
-            compositionEndedAtRef.current = Date.now();
+            compositionEndedAtRef.current = nowMs();
           }}
           onDragOver={(event) => {
             event.preventDefault();
@@ -247,7 +248,7 @@ export function Composer({
             }
             if (event.key !== "Enter" || event.shiftKey) return;
             event.preventDefault();
-            if (Date.now() - compositionEndedAtRef.current < 100) return;
+            if (nowMs() - compositionEndedAtRef.current < 100) return;
             submit();
           }}
         />

@@ -8,6 +8,7 @@ import { ThinkingIndicator } from "@/components/chat/thinking-indicator";
 import { ToolTimer } from "@/components/chat/tool-timer";
 import { parseCommand } from "@/lib/chat/commands";
 import type { ChatMessage, ToolMessage } from "@/lib/chat/types";
+import { formatClock, formatIso, nowMs } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 const STICK_THRESHOLD_PX = 96;
@@ -86,13 +87,6 @@ function ErrorBlock({ text }: { text: string }) {
   );
 }
 
-const clockFormatter = new Intl.DateTimeFormat(undefined, {
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-});
-
 export function Transcript({
   messages,
   mode,
@@ -152,7 +146,7 @@ export function Transcript({
           <div className="px-4 py-3 text-[15px] leading-7">
             <ThinkingIndicator
               label={mode === "deliver" ? "Working" : "Thinking"}
-              startedAt={runStartedAt ?? Date.now()}
+              startedAt={runStartedAt ?? nowMs()}
             />
           </div>
         ) : null}
@@ -189,10 +183,10 @@ function MessageRow({
         onConfirmAnswer={onConfirmAnswer}
       />
       <time
-        dateTime={new Date(message.createdAt).toISOString()}
+        dateTime={formatIso(message.createdAt)}
         className="absolute top-3 right-4 text-sm opacity-0 group-hover:opacity-100"
       >
-        {clockFormatter.format(message.createdAt)}
+        {formatClock(message.createdAt)}
       </time>
     </div>
   );

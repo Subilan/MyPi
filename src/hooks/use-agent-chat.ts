@@ -17,6 +17,7 @@ import type {
   ToolMessage,
   UserMessage,
 } from "@/lib/chat/types";
+import { formatDateTime, nowMs } from "@/lib/time";
 import type {
   AgentAssistantTextData,
   AgentMessageEndData,
@@ -100,7 +101,7 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
     (notice: Omit<NoticeMessage, "id" | "role" | "createdAt">) => {
       setMessages((current) => [
         ...current,
-        { id: nextId(), role: "notice", createdAt: Date.now(), ...notice },
+        { id: nextId(), role: "notice", createdAt: nowMs(), ...notice },
       ]);
     },
     [nextId],
@@ -112,7 +113,7 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
         id: nextId(),
         role: "error",
         text,
-        createdAt: Date.now(),
+        createdAt: nowMs(),
       };
       setMessages((current) => [...current, message]);
     },
@@ -123,7 +124,7 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
     (confirm: Omit<ConfirmMessage, "id" | "role" | "createdAt" | "answer">) => {
       setMessages((current) => [
         ...current,
-        { id: nextId(), role: "confirm", createdAt: Date.now(), answer: null, ...confirm },
+        { id: nextId(), role: "confirm", createdAt: nowMs(), answer: null, ...confirm },
       ]);
     },
     [nextId],
@@ -142,7 +143,7 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
 
   const beginWaiting = useCallback(() => {
     if (waitingStartedAtRef.current !== null) return;
-    waitingStartedAtRef.current = Date.now();
+    waitingStartedAtRef.current = nowMs();
     setWaitingForUser(true);
   }, []);
 
@@ -150,7 +151,7 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
     const startedAt = waitingStartedAtRef.current;
     if (startedAt === null) return;
     waitingStartedAtRef.current = null;
-    pausedMsRef.current += Date.now() - startedAt;
+    pausedMsRef.current += nowMs() - startedAt;
     const base = runBaseRef.current;
     if (base !== null) setRunStartedAt(base + pausedMsRef.current);
     setWaitingForUser(false);
@@ -166,7 +167,7 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
   const startAssistant = useCallback(() => {
     const id = nextId();
     assistantIdRef.current = id;
-    const now = Date.now();
+    const now = nowMs();
     const message: AssistantMessage = {
       id,
       role: "assistant",
@@ -243,7 +244,7 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
         }
         case "tool_execution_start": {
           const start = data as AgentToolStartData;
-          const now = Date.now();
+          const now = nowMs();
           const tool: ToolMessage = {
             id: `tool:${start.toolCallId}`,
             role: "tool",
@@ -278,7 +279,7 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
         }
         case "tool_execution_end": {
           const end = data as AgentToolEndData;
-          const finishedAt = Date.now();
+          const finishedAt = nowMs();
           setMessages((current) =>
             current.map((entry) =>
               entry.role === "tool" && entry.toolCallId === end.toolCallId
@@ -432,10 +433,10 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
           id: `send-${(counterRef.current += 1)}`,
           role: "notice",
           title: "SESSION",
-          text: `已切换到会话 ${data.summary.id}（${sessionTimeFormatter.format(
-            new Date(data.summary.startedAt),
+          text: `已切换到会话 ${data.summary.id}（${formatDateTime(
+            data.summary.startedAt,
           )}），接下来的消息会追加到这个会话里。`,
-          createdAt: Date.now(),
+          createdAt: nowMs(),
           error: null,
         },
       ]);
@@ -646,7 +647,7 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
       const trimmed = text.trim();
       if (!trimmed || runningRef.current || requestedModeRef.current !== null) return;
 
-      const now = Date.now();
+      const now = nowMs();
       const userMessage: UserMessage = {
         id: nextId(),
         role: "user",
@@ -802,13 +803,3 @@ function resolveSession(
   const prefix = sessions.filter((session) => session.id.startsWith(trimmed));
   return prefix.length === 1 ? prefix[0] : null;
 }
-
-const sessionTimeFormatter = new Intl.DateTimeFormat(undefined, {
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-});

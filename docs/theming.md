@@ -13,13 +13,14 @@
 
 | class | 元素 |
 | --- | --- |
-| `.ar-background` | 窗口背景 |
+| `.ar-background` | 窗口背景，挂在 `body` 上，聊天、会话列表、跳转、编辑器全部共用 |
 | `.ar-message-user` | 用户消息 |
 | `.ar-message-assistant` | 助手消息 |
 | `.ar-message-tool` | 工具消息，配 `[data-status="running\|ok\|error"]` |
 | `.ar-message-system` | 系统消息，配 `[data-tone="info\|success\|warning\|critical\|neutral"]` |
 | `.ar-composer` | 输入框外壳 |
 | `.ar-composer-input` | 输入框本体 |
+| `.ar-session-row` | 会话列表行，选中态配 `[data-selected="true"]`，默认是主题色 13% 的淡底 |
 
 系统消息涵盖通知、错误、确认卡、交付卡与选择题卡。工具状态与系统语气用属性选择器区分，不另外暴露变量。
 
@@ -44,6 +45,7 @@
 .ar-background { background-color: #faf9f5; }
 .ar-message-user { background-color: #f0eee6; }
 .ar-message-tool[data-status="ok"] { background-color: #e7efe6; color: #2f6b4f; }
+.ar-session-row[data-selected="true"] { background-color: #f0eee6; }
 ```
 
 ## /ui 指令

@@ -71,7 +71,7 @@ export function EditorPane({
   }, []);
 
   return (
-    <section className="ar-background flex h-svh flex-col text-foreground">
+    <section className="flex h-svh flex-col">
       <header className="shrink-0 border-b">
         <div className="flex items-center justify-between gap-3 px-4 py-2.5">
           <div className="flex min-w-0 items-center gap-2">

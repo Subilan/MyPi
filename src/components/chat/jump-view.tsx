@@ -188,7 +188,7 @@ export function JumpView({
   const selectedNode = path[selected] ? visible.byId.get(path[selected]) : undefined;
 
   return (
-    <section className="ar-background flex h-svh flex-col text-foreground">
+    <section className="flex h-svh flex-col">
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
         <div className="flex w-full flex-col pb-6">
           {path.length === 0 ? (

@@ -115,7 +115,7 @@ export default function App() {
           onCancel={chat.closeJumpView}
         />
       ) : (
-        <main className="ar-background flex h-svh flex-col text-foreground">
+        <main className="flex h-svh flex-col">
           {notice ? (
             <div className="shrink-0 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-xs break-words text-destructive">
               {notice}

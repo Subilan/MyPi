@@ -187,6 +187,9 @@
   .ar-composer[data-dragging="true"] {
     border-color: var(--primary);
   }
+  .ar-session-row[data-selected="true"] {
+    background-color: color-mix(in oklab, var(--primary) 13%, transparent);
+  }
 }
 .jump-selected,
 .jump-selected * {

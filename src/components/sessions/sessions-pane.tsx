@@ -126,7 +126,7 @@ export function SessionsPane({
   const notice = switchError ?? error;
 
   return (
-    <section className="ar-background flex h-svh flex-col text-foreground">
+    <section className="flex h-svh flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto">
         <p className="px-4 pt-3 text-[15px] leading-7 font-semibold">SESSIONS</p>
 
@@ -157,9 +157,9 @@ export function SessionsPane({
                       setSelected(index);
                     }}
                     disabled={pendingId !== null}
+                    data-selected={active ? "true" : undefined}
                     className={cn(
-                      "flex w-full flex-col items-start gap-1 border-b px-4 py-3 text-left",
-                      active ? "bg-accent text-accent-foreground" : null,
+                      "ar-session-row flex w-full flex-col items-start gap-1 border-b px-4 py-3 text-left",
                       pendingId !== null && !pending ? "opacity-60" : null,
                     )}
                   >

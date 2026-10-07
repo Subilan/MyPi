@@ -99,11 +99,10 @@ export function SessionsPane({
                       itemRefs.current[index] = node;
                     }}
                     onClick={() => choose(session)}
-                    onMouseEnter={() => setSelected(index)}
                     disabled={pendingId !== null}
                     className={cn(
-                      "flex w-full flex-col items-start gap-1 border-b px-4 py-3 text-left transition-colors",
-                      active ? "bg-accent text-accent-foreground" : "hover:bg-accent/50",
+                      "flex w-full flex-col items-start gap-1 border-b px-4 py-3 text-left",
+                      active ? "bg-accent text-accent-foreground" : null,
                       pendingId !== null && !pending ? "opacity-60" : null,
                     )}
                   >

@@ -4,9 +4,9 @@ import type { ConfirmMessage } from "@/lib/chat/types";
 import { cn } from "@/lib/utils";
 
 const TONES = {
-  pending: "bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-100",
-  confirmed: "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100",
-  cancelled: "bg-muted text-muted-foreground",
+  pending: "warning",
+  confirmed: "success",
+  cancelled: "neutral",
 } as const;
 
 export function ConfirmCard({
@@ -21,7 +21,7 @@ export function ConfirmCard({
   const tone = pending ? TONES.pending : message.answer === "yes" ? TONES.confirmed : TONES.cancelled;
 
   return (
-    <div className={cn("px-4 py-3 text-[15px] leading-7", tone)}>
+    <div data-tone={tone} className="ar-message-system px-4 py-3 text-[15px] leading-7">
       <p className={cn(message.answer === "yes" ? "font-bold" : "font-semibold")}>
         {pending ? message.title : message.answer === "yes" ? "CONFIRMED" : "CANCELLED"}
       </p>

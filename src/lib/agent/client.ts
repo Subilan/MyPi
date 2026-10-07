@@ -15,6 +15,7 @@ import type {
   AgentSessionSearchData,
   AgentStateData,
   AgentStatus,
+  AgentThemeFileData,
   ChatMode,
   DecisionAnswer,
 } from "@shared/protocol";
@@ -104,6 +105,18 @@ export class AgentClient {
 
   answerDecision(toolCallId: string, answers: DecisionAnswer[]): Promise<AgentDecisionData> {
     return this.#send<AgentDecisionData>({ type: "decision_answer", toolCallId, answers });
+  }
+
+  theme(): Promise<AgentThemeFileData> {
+    return this.#send<AgentThemeFileData>({ type: "theme" });
+  }
+
+  saveTheme(text: string): Promise<AgentThemeFileData> {
+    return this.#send<AgentThemeFileData>({ type: "theme_save", text });
+  }
+
+  applyUiPreset(name: string): Promise<AgentThemeFileData> {
+    return this.#send<AgentThemeFileData>({ type: "ui_preset", name });
   }
 
   sessionList(): Promise<AgentSessionListData> {

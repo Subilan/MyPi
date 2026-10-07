@@ -1,13 +1,17 @@
 import { build } from "esbuild";
-import { mkdirSync } from "node:fs";
+import { cpSync, mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
 const root = path.resolve(import.meta.dirname, "..");
 const entry = path.join(root, "sidecar", "src", "index.ts");
 const outfile = path.join(root, "src-tauri", "resources", "agent", "index.mjs");
+const presetsSrc = path.join(root, "sidecar", "presets");
+const presetsOut = path.join(root, "src-tauri", "resources", "agent", "presets");
 
 mkdirSync(path.dirname(outfile), { recursive: true });
+rmSync(presetsOut, { recursive: true, force: true });
+cpSync(presetsSrc, presetsOut, { recursive: true });
 
 const minify = process.argv.includes("--minify");
 
@@ -26,3 +30,4 @@ await build({
 process.stdout.write(
   `sidecar: bundled -> ${path.relative(root, outfile)}${minify ? " (minified)" : ""}\n`,
 );
+process.stdout.write(`sidecar: presets  -> ${path.relative(root, presetsOut)}\n`);

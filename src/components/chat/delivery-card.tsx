@@ -3,13 +3,9 @@ import { toast } from "sonner";
 import { isTauriRuntime } from "@/lib/agent/client";
 import { cn } from "@/lib/utils";
 
-const STYLES = {
-  success: {
-    wrapper: "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100",
-  },
-  failure: {
-    wrapper: "bg-red-50 text-red-900 dark:bg-red-950/40 dark:text-red-100",
-  },
+const TONES = {
+  success: "success",
+  failure: "critical",
 } as const;
 
 function readString(value: unknown): string | null {
@@ -62,14 +58,14 @@ export function DeliveryCard({
   args: unknown;
 }) {
   const data = (args && typeof args === "object" ? args : {}) as Record<string, unknown>;
-  const style = STYLES[status];
+  const tone = TONES[status];
   const body = status === "success" ? readString(data.description) : readString(data.reason);
   const artifacts = status === "success" ? readStrings(data.artifacts) : [];
   const nextSteps = status === "success" ? readStrings(data.nextSteps) : [];
   const suggestions = status === "failure" ? readStrings(data.suggestion) : [];
 
   return (
-    <div className={cn("px-4 py-3 text-[15px] leading-7", style.wrapper)}>
+    <div data-tone={tone} className="ar-message-system px-4 py-3 text-[15px] leading-7">
       <p className={cn(status === "success" ? "font-bold" : "font-semibold")}>
         {status === "success" ? "DONE" : "FAILURE"}
       </p>

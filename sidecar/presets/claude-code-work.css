@@ -1,0 +1,51 @@
+/**
+ * name: claude-code-work
+ * label: Claude Code Work
+ * description: Claude 品牌的暖色纸感配色，米白底加陶土色点缀，模型输出用衬线字体
+ * author: Subilan
+ * license: MIT
+ * version: 1.0.0
+ */
+
+:root {
+  --ar-font-general: Inter, system-ui, sans-serif;
+  --ar-font-mono: "JetBrains Mono", Menlo, monospace;
+  --ar-primary: #d97757;
+  --ar-primary-foreground: #1f1e1d;
+  --ar-ring: #d97757;
+}
+
+.ar-background {
+  background-color: #faf9f5;
+}
+
+.ar-message-user {
+  background-color: #f0eee6;
+}
+
+.ar-message-assistant {
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+}
+
+.ar-message-tool[data-status="running"],
+.ar-message-system[data-tone="info"] {
+  background-color: #f1ebe4;
+  color: #8a4b32;
+}
+
+.ar-message-tool[data-status="ok"],
+.ar-message-system[data-tone="success"] {
+  background-color: #e7efe6;
+  color: #2f6b4f;
+}
+
+.ar-message-system[data-tone="warning"] {
+  background-color: #f7ecd2;
+  color: #8a5a12;
+}
+
+.ar-message-tool[data-status="error"],
+.ar-message-system[data-tone="critical"] {
+  background-color: #f8e5e1;
+  color: #a03a2c;
+}

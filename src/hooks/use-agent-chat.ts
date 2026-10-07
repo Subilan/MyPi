@@ -18,6 +18,7 @@ import type {
   UserMessage,
 } from "@/lib/chat/types";
 import { formatDateTime, nowMs } from "@/lib/time";
+import { applyThemeCss, formatPresets, formatThemeFile } from "@/lib/theme";
 import type {
   AgentAssistantTextData,
   AgentMessageEndData,
@@ -34,6 +35,7 @@ import type {
 
 export interface AgentChatOptions {
   onEditSystemPrompt?: () => void;
+  onEditTheme?: () => void;
 }
 
 export interface SessionBrowserState {
@@ -95,6 +97,8 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
   const assistantIdRef = useRef<string | null>(null);
   const editSystemPromptRef = useRef(options.onEditSystemPrompt);
   editSystemPromptRef.current = options.onEditSystemPrompt;
+  const editThemeRef = useRef(options.onEditTheme);
+  editThemeRef.current = options.onEditTheme;
 
   const nextId = useCallback(() => `msg-${(counterRef.current += 1)}`, []);
 
@@ -387,6 +391,10 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
         setRuntime(hello.runtime);
         setMode(hello.runtime.mode);
         setSessionId(hello.runtime.sessionId);
+        await client
+          .theme()
+          .then((data) => applyThemeCss(data.text))
+          .catch(() => undefined);
       } catch (error) {
         setBridgeError(describe(error));
       }
@@ -593,6 +601,52 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
             text: `切换模式会重建 Agent，并把不属于 ${modeLabel(action.mode)} 模式的历史工具调用从模型上下文里移除；聊天记录本身保留。\n确认切换到 ${modeLabel(action.mode)} 模式？`,
             switchTo: action.mode,
           });
+          return;
+        case "ui.show":
+          client
+            .theme()
+            .then((data) => {
+              applyThemeCss(data.text);
+              appendNotice({ title: "UI", text: formatThemeFile(data), error: null });
+            })
+            .catch(failed);
+          return;
+        case "ui.list":
+          client
+            .theme()
+            .then((data) => {
+              applyThemeCss(data.text);
+              appendNotice({ title: "UI", text: formatPresets(data), error: null });
+            })
+            .catch(failed);
+          return;
+        case "ui.apply":
+          client
+            .applyUiPreset(action.name)
+            .then((data) => {
+              applyThemeCss(data.text);
+              appendNotice({
+                title: "UI",
+                text: data.applied ? `已应用预设 ${data.applied.label}` : "已应用默认主题",
+                error: null,
+              });
+            })
+            .catch(failed);
+          return;
+        case "ui.edit":
+          editThemeRef.current?.();
+          return;
+        case "ui.usage":
+          client
+            .theme()
+            .then((data) => {
+              appendNotice({
+                title: "UI",
+                text: `用法：/ui 显示当前主题，/ui list 列出预设，/ui apply <name|default> 应用预设，/ui edit 编辑 CSS。\n\n${formatPresets(data)}`,
+                error: null,
+              });
+            })
+            .catch(failed);
           return;
         default:
           return;

@@ -9,6 +9,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { useAgentChat } from "@/hooks/use-agent-chat";
 import { useEditorDocument } from "@/hooks/use-editor-document";
 import { agentClient, isTauriRuntime } from "@/lib/agent/client";
+import { applyThemeCss } from "@/lib/theme";
 
 const EditorPane = lazy(() =>
   import("@/components/editor/editor-pane").then((module) => ({ default: module.EditorPane })),
@@ -29,11 +30,18 @@ export default function App() {
   const openSystemPrompt = useCallback(() => {
     void client
       .systemPrompt()
-      .then((data) => open(fileName(data.path), data.path, data.text))
+      .then((data) => open("system-prompt", fileName(data.path), data.path, data.text))
       .catch((error: unknown) => toast.error(describe(error)));
   }, [client, open]);
 
-  const chat = useAgentChat({ onEditSystemPrompt: openSystemPrompt });
+  const openTheme = useCallback(() => {
+    void client
+      .theme()
+      .then((data) => open("theme", fileName(data.path), data.path, data.text))
+      .catch((error: unknown) => toast.error(describe(error)));
+  }, [client, open]);
+
+  const chat = useAgentChat({ onEditSystemPrompt: openSystemPrompt, onEditTheme: openTheme });
 
   const saveDocument = useCallback(async (): Promise<boolean> => {
     if (!editorDocument) return false;
@@ -41,8 +49,14 @@ export default function App() {
     if (editorDocument.saving) return false;
     startSaving();
     try {
-      const data = await client.saveSystemPrompt(editorDocument.value);
-      markSaved(data.text);
+      if (editorDocument.target === "theme") {
+        const data = await client.saveTheme(editorDocument.value);
+        applyThemeCss(data.text);
+        markSaved(data.text);
+      } else {
+        const data = await client.saveSystemPrompt(editorDocument.value);
+        markSaved(data.text);
+      }
       return true;
     } catch (error: unknown) {
       fail(describe(error));
@@ -101,7 +115,7 @@ export default function App() {
           onCancel={chat.closeJumpView}
         />
       ) : (
-        <main className="flex h-svh flex-col bg-background text-foreground">
+        <main className="ar-background flex h-svh flex-col text-foreground">
           {notice ? (
             <div className="shrink-0 border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-xs break-words text-destructive">
               {notice}

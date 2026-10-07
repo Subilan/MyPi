@@ -8,8 +8,10 @@ import {
 } from "../../shared/protocol.ts";
 import { createAgentHost } from "./agent-host.ts";
 import { messageText } from "./session.ts";
+import { ThemeFile } from "./theme.ts";
 
 const host = createAgentHost(emitEvent);
+const theme = new ThemeFile();
 
 const info: AgentRuntimeInfo = {
   protocol: AGENT_PROTOCOL_VERSION,
@@ -206,6 +208,18 @@ async function handle(request: AgentRequest): Promise<void> {
         ? host.answerDecision(request.toolCallId, request.answers ?? [])
         : false;
       emit({ type: "response", id: request.id, ok: true, data: { accepted } });
+      return;
+    }
+    case "theme": {
+      emit({ type: "response", id: request.id, ok: true, data: theme.data() });
+      return;
+    }
+    case "theme_save": {
+      emit({ type: "response", id: request.id, ok: true, data: theme.save(request.text ?? "") });
+      return;
+    }
+    case "ui_preset": {
+      emit({ type: "response", id: request.id, ok: true, data: theme.applyPreset(request.name ?? "") });
       return;
     }
     default: {

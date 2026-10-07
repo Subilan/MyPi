@@ -170,10 +170,8 @@ export function Composer({
   return (
     <div
       ref={rootRef}
-      className={cn(
-        "shrink-0 border-t bg-background/95 backdrop-blur transition-colors",
-        dragging ? "border-primary" : null,
-      )}
+      data-dragging={dragging ? "true" : undefined}
+      className="ar-composer shrink-0 transition-colors"
     >
       <div className="flex w-full items-end gap-2 px-4 py-3">
         <textarea
@@ -194,7 +192,7 @@ export function Composer({
           autoComplete="off"
           {...({ writingsuggestions: "false" } as Record<string, string>)}
           className={cn(
-            "min-h-9 flex-1 resize-none rounded-md border border-input bg-transparent px-3 py-1.5 text-[15px] leading-6 outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-input/30",
+            "ar-composer-input min-h-9 flex-1 resize-none rounded-md border border-input bg-transparent px-3 py-1.5 text-[15px] leading-6 outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-input/30",
             isCommand ? "font-bold text-primary" : null,
             dragging ? "border-primary ring-3 ring-ring/40" : null,
           )}

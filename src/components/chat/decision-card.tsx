@@ -128,9 +128,9 @@ function QuestionBody({
   return (
     <div className="flex flex-col gap-2">
       <p className="text-[15px] leading-7">
-        <span className="text-sky-700/80 dark:text-sky-300/80">{index + 1}.</span>{" "}
+        <span className="opacity-70">{index + 1}.</span>{" "}
         {question.question}
-        <span className="ml-2 text-xs font-semibold text-sky-700/80 dark:text-sky-300/80">
+        <span className="ml-2 text-xs font-semibold opacity-70">
           {TYPE_LABEL[question.type]}
         </span>
       </p>
@@ -269,7 +269,7 @@ export function DecisionCard({
 
   return (
     <TooltipProvider>
-      <div className="bg-sky-50 px-4 py-3 text-[15px] leading-7 text-sky-900 dark:bg-sky-950/40 dark:text-sky-100">
+      <div data-tone="info" className="ar-message-system px-4 py-3 text-[15px] leading-7">
         <p className="font-semibold">CLARIFY</p>
         <div className="mt-3 flex flex-col gap-4">
           {questions.map((question, index) => (

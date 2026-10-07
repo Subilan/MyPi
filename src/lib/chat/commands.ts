@@ -11,7 +11,12 @@ export type CommandAction =
   | { type: "mode.set"; mode: ChatMode }
   | { type: "sessions.list" }
   | { type: "sessions.switch"; target: string }
-  | { type: "jump" };
+  | { type: "jump" }
+  | { type: "ui.show" }
+  | { type: "ui.list" }
+  | { type: "ui.apply"; name: string }
+  | { type: "ui.edit" }
+  | { type: "ui.usage" };
 
 export interface AgentCommand {
   name: string;
@@ -52,6 +57,22 @@ function parseMode(args: string[]): CommandAction | null {
   const value = args[0].toLowerCase();
   const matches = CHAT_MODES.filter((mode) => mode.startsWith(value));
   return matches.length === 1 ? { type: "mode.set", mode: matches[0] } : null;
+}
+
+const UI_SUBCOMMANDS = ["list", "apply", "edit"] as const;
+
+function parseUi(args: string[]): CommandAction | null {
+  if (args.length === 0) return { type: "ui.show" };
+  const name = matchUiSubcommand(args[0].toLowerCase());
+  if (name === "list" && args.length === 1) return { type: "ui.list" };
+  if (name === "apply" && args.length === 2) return { type: "ui.apply", name: args[1] };
+  if (name === "edit" && args.length === 1) return { type: "ui.edit" };
+  return { type: "ui.usage" };
+}
+
+function matchUiSubcommand(value: string): (typeof UI_SUBCOMMANDS)[number] | null {
+  const matches = UI_SUBCOMMANDS.filter((name) => name.startsWith(value));
+  return matches.length === 1 ? matches[0] : null;
 }
 
 const SPECS: readonly CommandSpec[] = [
@@ -108,6 +129,13 @@ const SPECS: readonly CommandSpec[] = [
     description: "进入跳转视图，在当前会话的消息树里回溯或切换分支",
     usage: "/jump",
     parse: (args) => (args.length === 0 ? { type: "jump" } : null),
+  },
+  {
+    name: "ui",
+    aliases: [],
+    description: "查看或编辑界面主题，列出、应用预设",
+    usage: "/ui [list|edit|apply <name>]",
+    parse: parseUi,
   },
 ];
 

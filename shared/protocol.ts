@@ -38,7 +38,10 @@ export interface AgentRequest {
     | "session_search"
     | "session_switch"
     | "session_tree"
-    | "session_jump";
+    | "session_jump"
+    | "theme"
+    | "theme_save"
+    | "ui_preset";
   text?: string;
   name?: string;
   path?: string;
@@ -130,6 +133,19 @@ export interface AgentSessionData {
   summary: AgentSessionSummary;
   nodes: AgentSessionEntry[];
   head: string | null;
+}
+
+export interface AgentPresetSummary {
+  name: string;
+  label: string;
+  description: string;
+}
+
+export interface AgentThemeFileData {
+  path: string;
+  text: string;
+  presets: AgentPresetSummary[];
+  applied: AgentPresetSummary | null;
 }
 
 export interface AgentPromptFileData {

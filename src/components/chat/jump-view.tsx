@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import type { ChatMode } from "@shared/protocol";
-import { TOOL_STYLES, isHidden, toolDetail } from "@/components/chat/transcript";
+import { isHidden, toolDetail } from "@/components/chat/transcript";
 import { parseCommand } from "@/lib/chat/commands";
 import type { ChatMessage } from "@/lib/chat/types";
 import {
@@ -14,9 +14,6 @@ import {
   type ChatTree,
 } from "@/lib/chat/tree";
 import { cn } from "@/lib/utils";
-
-const NOTICE_STYLE = "bg-sky-50 text-sky-900 dark:bg-sky-950/40 dark:text-sky-100";
-const ERROR_STYLE = "bg-red-50 text-red-900 dark:bg-red-950/40 dark:text-red-100";
 
 const DELIVER_FIELD: Record<string, string> = {
   report_success: "description",
@@ -49,18 +46,24 @@ function previewText(message: ChatMessage): string {
   }
 }
 
-function rowStyle(message: ChatMessage): string {
+function rowSurface(message: ChatMessage): { className: string; status?: string; tone?: string } {
   switch (message.role) {
     case "user":
-      return "bg-muted";
+      return { className: "ar-message-user" };
     case "tool":
-      return TOOL_STYLES[message.status];
+      return { className: "ar-message-tool", status: message.status };
     case "notice":
-      return NOTICE_STYLE;
+      return { className: "ar-message-system", tone: "info" };
     case "error":
-      return ERROR_STYLE;
+      return { className: "ar-message-system", tone: "critical" };
+    case "confirm":
+      return {
+        className: "ar-message-system",
+        tone:
+          message.answer === "yes" ? "success" : message.answer === "no" ? "neutral" : "warning",
+      };
     default:
-      return "";
+      return { className: "ar-message-assistant" };
   }
 }
 
@@ -185,7 +188,7 @@ export function JumpView({
   const selectedNode = path[selected] ? visible.byId.get(path[selected]) : undefined;
 
   return (
-    <section className="flex h-svh flex-col bg-background text-foreground">
+    <section className="ar-background flex h-svh flex-col text-foreground">
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
         <div className="flex w-full flex-col pb-6">
           {path.length === 0 ? (
@@ -197,6 +200,7 @@ export function JumpView({
               const node = visible.byId.get(id);
               if (!node) return null;
               const message = entryToMessage(node.entry);
+              const surface = rowSurface(message);
               const active = index === selected;
               const fork = node.children.length > 1 || (node.parent === null && roots.length > 1);
               const isCommand = message.role === "user" && parseCommand(message.text) !== null;
@@ -211,7 +215,9 @@ export function JumpView({
                 >
                   <div
                     onClick={() => setSelected(index)}
-                    className={cn("px-4 py-2", rowStyle(message))}
+                    data-status={surface.status}
+                    data-tone={surface.tone}
+                    className={cn("px-4 py-2", surface.className)}
                   >
                     <p
                       className={cn(

@@ -1,6 +1,9 @@
 import { useCallback, useState } from "react";
 
+export type EditorTarget = "system-prompt" | "theme";
+
 export interface EditorDocument {
+  target: EditorTarget;
   fileName: string;
   filePath: string;
   value: string;
@@ -11,7 +14,7 @@ export interface EditorDocument {
 
 export interface EditorDocumentController {
   document: EditorDocument | null;
-  open(fileName: string, filePath: string, value: string): void;
+  open(target: EditorTarget, fileName: string, filePath: string, value: string): void;
   change(value: string): void;
   startSaving(): void;
   markSaved(value: string): void;
@@ -22,16 +25,20 @@ export interface EditorDocumentController {
 export function useEditorDocument(): EditorDocumentController {
   const [document, setDocument] = useState<EditorDocument | null>(null);
 
-  const open = useCallback((fileName: string, filePath: string, value: string) => {
-    setDocument({
-      fileName,
-      filePath,
-      value,
-      savedValue: value,
-      saving: false,
-      error: null,
-    });
-  }, []);
+  const open = useCallback(
+    (target: EditorTarget, fileName: string, filePath: string, value: string) => {
+      setDocument({
+        target,
+        fileName,
+        filePath,
+        value,
+        savedValue: value,
+        saving: false,
+        error: null,
+      });
+    },
+    [],
+  );
 
   const change = useCallback((value: string) => {
     setDocument((current) => (current ? { ...current, value, error: null } : current));

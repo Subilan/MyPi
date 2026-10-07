@@ -17,14 +17,6 @@ const MAX_ARGS_CHARS = 400;
 
 const DELIVER_TOOLS = new Set(["report_success", "report_failure", "request_user_decision"]);
 
-const ERROR_BLOCK = "bg-red-50 text-red-900 dark:bg-red-950/40 dark:text-red-100";
-
-export const TOOL_STYLES: Record<"running" | "ok" | "error", string> = {
-  running: "bg-sky-50 text-sky-900 dark:bg-sky-950/40 dark:text-sky-100",
-  ok: "bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100",
-  error: ERROR_BLOCK,
-};
-
 const BASH_DEFAULT_TIMEOUT_MS = 120_000;
 const BASH_MIN_TIMEOUT_MS = 1_000;
 const BASH_MAX_TIMEOUT_MS = 600_000;
@@ -83,7 +75,9 @@ function formatArgs(args: unknown): string {
 
 function ErrorBlock({ text }: { text: string }) {
   return (
-    <div className={cn("px-4 py-3 text-[15px] leading-7 break-words", ERROR_BLOCK)}>{text}</div>
+    <div data-tone="critical" className="ar-message-system px-4 py-3 text-[15px] leading-7 break-words">
+      {text}
+    </div>
   );
 }
 
@@ -209,7 +203,7 @@ function MessageBody({
 
   if (message.role === "notice") {
     return (
-      <div className="bg-sky-50 px-4 py-3 text-[15px] leading-7 text-sky-900 dark:bg-sky-950/40 dark:text-sky-100">
+      <div data-tone="info" className="ar-message-system px-4 py-3 text-[15px] leading-7">
         <p className="font-semibold">{message.title}</p>
         {message.text ? <p className="mt-1 whitespace-pre-wrap">{message.text}</p> : null}
         {message.error ? <p className="mt-2 text-destructive">{message.error}</p> : null}
@@ -220,7 +214,7 @@ function MessageBody({
   if (message.role === "user") {
     const isCommand = parseCommand(message.text) !== null;
     return (
-      <div className="bg-muted px-4 py-3 text-[15px] leading-7">
+      <div className="ar-message-user px-4 py-3 text-[15px] leading-7">
         <p className={cn("whitespace-pre-wrap", isCommand ? "font-bold text-primary" : null)}>
           {message.text}
         </p>
@@ -247,10 +241,8 @@ function MessageBody({
     return (
       <div className="text-[15px] leading-7">
         <p
-          className={cn(
-            "flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-4 py-3",
-            TOOL_STYLES[message.status],
-          )}
+          data-status={message.status}
+          className="ar-message-tool flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-4 py-3"
         >
           <span className="font-semibold">{message.name}</span>
           {detail ? <span className="min-w-0 break-all">{detail}</span> : null}
@@ -274,7 +266,7 @@ function MessageBody({
   }
 
   return (
-    <div className="text-[15px] leading-7">
+    <div className="ar-message-assistant text-[15px] leading-7">
       {message.thinking || message.text ? (
         <div className="px-4 py-3">
           {message.thinking ? <ThinkingIndicator startedAt={message.startedAt} /> : null}

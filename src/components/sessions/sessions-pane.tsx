@@ -121,7 +121,7 @@ export function SessionsPane({
   const notice = switchError ?? error;
 
   return (
-    <section className="flex h-svh flex-col bg-background text-foreground">
+    <section className="ar-background flex h-svh flex-col text-foreground">
       <div className="min-h-0 flex-1 overflow-y-auto">
         <p className="px-4 pt-3 text-[15px] leading-7 font-semibold">SESSIONS</p>
 

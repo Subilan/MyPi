@@ -59,6 +59,7 @@ export interface AgentChat {
   sessionId: string | null;
   sessionBrowser: SessionBrowserState | null;
   closeSessionBrowser(): void;
+  searchSessions(query: string): Promise<string[]>;
   switchSession(target: string): Promise<void>;
   jumpTree: ChatTree | null;
   composerSeed: { text: string; nonce: number } | null;
@@ -398,6 +399,11 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
     const data = await client.sessionList();
     return data.sessions;
   }, [client]);
+
+  const searchSessions = useCallback(
+    async (query: string): Promise<string[]> => (await client.sessionSearch(query)).ids,
+    [client],
+  );
 
   const openSessionBrowser = useCallback(() => {
     setSessionBrowser({ loading: true, error: null, sessions: [] });
@@ -750,6 +756,7 @@ export function useAgentChat(options: AgentChatOptions = {}): AgentChat {
     sessionId,
     sessionBrowser,
     closeSessionBrowser,
+    searchSessions,
     switchSession,
     jumpTree,
     composerSeed,

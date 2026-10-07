@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SearchIcon } from "lucide-react";
 import type { AgentSessionSummary } from "@shared/protocol";
 import { Badge } from "@/components/ui/badge";
 import type { SessionBrowserState } from "@/hooks/use-agent-chat";
@@ -8,18 +9,29 @@ import { cn } from "@/lib/utils";
 export function SessionsPane({
   state,
   onSelect,
+  onSearch,
   onClose,
 }: {
   state: SessionBrowserState;
   onSelect(sessionId: string): Promise<void>;
+  onSearch(query: string): Promise<string[]>;
   onClose(): void;
 }) {
   const { sessions, loading, error } = state;
+  const [query, setQuery] = useState("");
+  const [matched, setMatched] = useState<string[] | null>(null);
   const [selected, setSelected] = useState(0);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [switchError, setSwitchError] = useState<string | null>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const pendingRef = useRef(false);
+
+  const keyword = query.trim();
+  const visible = useMemo(
+    () => (matched ? sessions.filter((session) => matched.includes(session.id)) : sessions),
+    [sessions, matched],
+  );
 
   useEffect(() => {
     setSelected(0);
@@ -29,8 +41,35 @@ export function SessionsPane({
   }, [sessions]);
 
   useEffect(() => {
+    inputRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  useEffect(() => {
+    setSelected(0);
+    if (!keyword) {
+      setMatched(null);
+      return;
+    }
+    let cancelled = false;
+    onSearch(keyword)
+      .then((ids) => {
+        if (!cancelled) setMatched(ids);
+      })
+      .catch(() => {
+        if (!cancelled) setMatched([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [keyword, onSearch]);
+
+  useEffect(() => {
+    setSelected((index) => Math.min(index, Math.max(visible.length - 1, 0)));
+  }, [visible.length]);
+
+  useEffect(() => {
     itemRefs.current[selected]?.scrollIntoView({ block: "nearest" });
-  }, [selected, sessions]);
+  }, [selected, visible]);
 
   const choose = useCallback(
     (session: AgentSessionSummary | undefined) => {
@@ -47,8 +86,8 @@ export function SessionsPane({
     [onSelect],
   );
 
-  const handlers = useRef({ sessions, selected, choose, onClose });
-  handlers.current = { sessions, selected, choose, onClose };
+  const handlers = useRef({ visible, selected, choose, onClose, keyword, setQuery });
+  handlers.current = { visible, selected, choose, onClose, keyword, setQuery };
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -57,16 +96,22 @@ export function SessionsPane({
       const current = handlers.current;
       if (event.key === "ArrowDown") {
         event.preventDefault();
-        setSelected((index) => Math.min(index + 1, Math.max(current.sessions.length - 1, 0)));
+        setSelected((index) => Math.min(index + 1, Math.max(current.visible.length - 1, 0)));
       } else if (event.key === "ArrowUp") {
         event.preventDefault();
         setSelected((index) => Math.max(index - 1, 0));
       } else if (event.key === "Enter") {
         event.preventDefault();
-        current.choose(current.sessions[current.selected]);
+        current.choose(current.visible[current.selected]);
       } else if (event.key === "Escape") {
         event.preventDefault();
+        if (current.keyword) {
+          current.setQuery("");
+          return;
+        }
         current.onClose();
+      } else if (event.key.length === 1 && event.key !== " ") {
+        inputRef.current?.focus();
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -84,11 +129,13 @@ export function SessionsPane({
           <p className="px-4 py-2 text-xs break-words text-destructive">{notice}</p>
         ) : null}
 
-        {!loading && sessions.length === 0 ? (
-          <p className="px-4 py-10 text-center text-sm text-muted-foreground">还没有会话。</p>
+        {!loading && visible.length === 0 ? (
+          <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+            {keyword ? "没有匹配的会话。" : "还没有会话。"}
+          </p>
         ) : (
           <ul className="mt-1 flex flex-col">
-            {sessions.map((session, index) => {
+            {visible.map((session, index) => {
               const active = index === selected;
               const pending = pendingId === session.id;
               return (
@@ -99,6 +146,11 @@ export function SessionsPane({
                       itemRefs.current[index] = node;
                     }}
                     onClick={() => choose(session)}
+                    onMouseMove={(event) => {
+                      // 忽略布局变化后浏览器补发的合成 mousemove，避免进入页面时高亮行自己跳走
+                      if (event.movementX === 0 && event.movementY === 0) return;
+                      setSelected(index);
+                    }}
                     disabled={pendingId !== null}
                     className={cn(
                       "flex w-full flex-col items-start gap-1 border-b px-4 py-3 text-left",
@@ -130,6 +182,26 @@ export function SessionsPane({
             })}
           </ul>
         )}
+      </div>
+
+      <div
+        className={cn(
+          "flex shrink-0 items-center gap-2 px-4",
+          query ? "border-t py-2.5" : "h-0 overflow-hidden",
+        )}
+      >
+        <SearchIcon className="size-4 shrink-0 text-muted-foreground" />
+        <input
+          ref={inputRef}
+          value={query}
+          autoFocus
+          spellCheck={false}
+          autoComplete="off"
+          aria-label="搜索会话"
+          placeholder="输入关键词，按 id 或会话内容搜索"
+          onChange={(event) => setQuery(event.target.value)}
+          className="w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+        />
       </div>
     </section>
   );

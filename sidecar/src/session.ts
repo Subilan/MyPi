@@ -230,6 +230,28 @@ export class SessionStore {
     };
   }
 
+  search(query: string): string[] {
+    const keyword = query.trim().toLowerCase();
+    const ids = this.#files().slice(0, MAX_LIST);
+    if (!keyword) return ids;
+    return ids.filter((id) => this.#matches(id, keyword));
+  }
+
+  #matches(id: string, keyword: string): boolean {
+    if (id.toLowerCase().includes(keyword)) return true;
+    let records: StoredRecord[];
+    try {
+      records = this.#read(this.file(id));
+    } catch {
+      return false;
+    }
+    return records.some(
+      (record) =>
+        (record.kind === "user" || record.kind === "assistant") &&
+        messageText(record.message).toLowerCase().includes(keyword),
+    );
+  }
+
   #files(): string[] {
     try {
       return readdirSync(this.#dir)

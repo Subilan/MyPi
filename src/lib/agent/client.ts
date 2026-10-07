@@ -12,6 +12,7 @@ import type {
   AgentRequest,
   AgentSessionData,
   AgentSessionListData,
+  AgentSessionSearchData,
   AgentStateData,
   AgentStatus,
   ChatMode,
@@ -107,6 +108,10 @@ export class AgentClient {
 
   sessionList(): Promise<AgentSessionListData> {
     return this.#send<AgentSessionListData>({ type: "session_list" });
+  }
+
+  sessionSearch(query: string): Promise<AgentSessionSearchData> {
+    return this.#send<AgentSessionSearchData>({ type: "session_search", query });
   }
 
   switchSession(sessionId: string): Promise<AgentSessionData> {

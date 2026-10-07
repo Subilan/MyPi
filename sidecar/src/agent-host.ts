@@ -43,6 +43,7 @@ export interface AgentHost {
   sessionId(): string;
   sessionsDir(): string;
   sessions(): AgentSessionSummary[];
+  searchSessions(query: string): string[];
   switchSession(id: string): Promise<AgentSessionData>;
   tree(): AgentSessionData;
   jump(nodeId: string): Promise<AgentSessionData>;
@@ -58,6 +59,7 @@ export function createAgentHost(onEvent: (event: AgentEvent) => void): AgentHost
   const sessionApi = {
     sessionId: () => store.id,
     sessionsDir: () => store.dir,
+    searchSessions: (query: string) => store.search(query),
     sessions: () => store.list(),
     recordError: (message: string) => store.error(message),
   };

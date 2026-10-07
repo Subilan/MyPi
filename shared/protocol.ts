@@ -35,6 +35,7 @@ export interface AgentRequest {
     | "mode_set"
     | "decision_answer"
     | "session_list"
+    | "session_search"
     | "session_switch"
     | "session_tree"
     | "session_jump";
@@ -46,6 +47,7 @@ export interface AgentRequest {
   answers?: DecisionAnswer[];
   sessionId?: string;
   nodeId?: string;
+  query?: string;
 }
 
 export interface AgentRuntimeInfo {
@@ -95,6 +97,10 @@ export interface AgentSessionSummary {
 
 export interface AgentSessionListData {
   sessions: AgentSessionSummary[];
+}
+
+export interface AgentSessionSearchData {
+  ids: string[];
 }
 
 export interface SessionNodeBase {

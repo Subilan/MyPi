@@ -143,6 +143,15 @@ async function handle(request: AgentRequest): Promise<void> {
       });
       return;
     }
+    case "session_search": {
+      emit({
+        type: "response",
+        id: request.id,
+        ok: true,
+        data: { ids: host.searchSessions(request.query ?? "") },
+      });
+      return;
+    }
     case "session_switch": {
       emit({
         type: "response",

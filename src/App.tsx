@@ -90,6 +90,7 @@ export default function App() {
         <SessionsPane
           state={chat.sessionBrowser}
           onSelect={chat.switchSession}
+          onSearch={chat.searchSessions}
           onClose={chat.closeSessionBrowser}
         />
       ) : chat.jumpTree ? (

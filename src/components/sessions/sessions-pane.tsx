@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SearchIcon } from "lucide-react";
 import type { AgentSessionSummary } from "@shared/protocol";
 import { Badge } from "@/components/ui/badge";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group";
 import type { SessionBrowserState } from "@/hooks/use-agent-chat";
 import { formatDateTime, formatRelative } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -186,22 +191,25 @@ export function SessionsPane({
 
       <div
         className={cn(
-          "flex shrink-0 items-center gap-2 px-4",
+          "shrink-0 px-4",
           query ? "border-t py-2.5" : "h-0 overflow-hidden",
         )}
       >
-        <SearchIcon className="size-4 shrink-0 text-muted-foreground" />
-        <input
-          ref={inputRef}
-          value={query}
-          autoFocus
-          spellCheck={false}
-          autoComplete="off"
-          aria-label="搜索会话"
-          placeholder="输入关键词，按 id 或会话内容搜索"
-          onChange={(event) => setQuery(event.target.value)}
-          className="w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-        />
+        <InputGroup>
+          <InputGroupAddon>
+            <SearchIcon />
+          </InputGroupAddon>
+          <InputGroupInput
+            ref={inputRef}
+            value={query}
+            autoFocus
+            spellCheck={false}
+            autoComplete="off"
+            aria-label="搜索会话"
+            placeholder="输入关键词，按 id 或会话内容搜索"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </InputGroup>
       </div>
     </section>
   );

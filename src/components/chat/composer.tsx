@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { ArrowUpIcon, CircleStopIcon } from "lucide-react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { isTauriRuntime } from "@/lib/agent/client";
 import { parseCommand } from "@/lib/chat/commands";
 import { insertPaths } from "@/lib/chat/drop-paths";
@@ -174,7 +175,7 @@ export function Composer({
       className="ar-composer shrink-0 transition-colors"
     >
       <div className="flex w-full items-end gap-2 px-4 py-3">
-        <textarea
+        <Textarea
           ref={textareaRef}
           rows={1}
           value={draft}
@@ -192,7 +193,7 @@ export function Composer({
           autoComplete="off"
           {...({ writingsuggestions: "false" } as Record<string, string>)}
           className={cn(
-            "ar-composer-input min-h-9 flex-1 resize-none rounded-md border border-input bg-transparent px-3 py-1.5 text-[15px] leading-6 outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-input/30",
+            "ar-composer-input min-h-9 flex-1 resize-none field-sizing-fixed px-3 py-1.5 text-[15px] leading-6 md:text-[15px]",
             isCommand ? "font-bold text-primary" : null,
             dragging ? "border-primary ring-3 ring-ring/40" : null,
           )}

@@ -22,6 +22,10 @@
 | `Esc` | 清空输入框 |
 | `i` | 焦点不在输入框时聚焦输入框 |
 
+## 输入框本体
+
+用 shadcn 的 `Textarea`（`src/components/ui/textarea.tsx`），聚焦环、边框色、placeholder、disabled 这些样子都由组件提供，聚焦环的淡入来自组件自带的 `transition-[color,box-shadow]`。`ar-composer-input` 上只留布局覆盖：`min-h-9`、`px-3 py-1.5`、`text-[15px] leading-6`（字号跟聊天正文一致，另配 `md:text-[15px]` 压掉组件的 `md:text-sm`）、`resize-none`、`field-sizing-fixed`（高度归 JS 管，压掉组件的 `field-sizing-content`）。主题里覆盖 `.ar-composer-input` 能改这些。
+
 ## 拖入文件
 
 把外部文件拖进窗口，会在输入框光标处补上它的绝对路径：

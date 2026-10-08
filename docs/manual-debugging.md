@@ -15,9 +15,9 @@ printf '{"id":"1","type":"hello","name":"su"}\n{"id":"2","type":"prompt","text":
 
 | 变量 | 作用 |
 | --- | --- |
-| `AGENT_RUNBOOK_SETTINGS` | 指向另一份配置文件，方便用临时配置调 sidecar |
-| `AGENT_RUNBOOK_DEBUG=1` | 桥接调试。Rust 侧把找到的 node、产物路径、每条命令和每条记录打到 stderr |
+| `MYPI_SETTINGS` | 指向另一份配置文件，方便用临时配置调 sidecar |
+| `MYPI_DEBUG=1` | 桥接调试。Rust 侧把找到的 node、产物路径、每条命令和每条记录打到 stderr |
 
 ```bash
-AGENT_RUNBOOK_DEBUG=1 npm run tauri dev
+MYPI_DEBUG=1 npm run tauri dev
 ```

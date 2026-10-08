@@ -75,7 +75,7 @@ function formatArgs(args: unknown): string {
 
 function ErrorBlock({ text }: { text: string }) {
   return (
-    <div data-tone="critical" className="ar-message-system px-4 py-3 text-[15px] leading-7 break-words">
+    <div data-tone="critical" className="mypi-message-system px-4 py-3 text-[15px] leading-7 break-words">
       {text}
     </div>
   );
@@ -203,7 +203,7 @@ function MessageBody({
 
   if (message.role === "notice") {
     return (
-      <div data-tone="info" className="ar-message-system px-4 py-3 text-[15px] leading-7">
+      <div data-tone="info" className="mypi-message-system px-4 py-3 text-[15px] leading-7">
         <p className="font-semibold">{message.title}</p>
         {message.text ? <p className="mt-1 whitespace-pre-wrap">{message.text}</p> : null}
         {message.error ? <p className="mt-2 text-destructive">{message.error}</p> : null}
@@ -214,7 +214,7 @@ function MessageBody({
   if (message.role === "user") {
     const isCommand = parseCommand(message.text) !== null;
     return (
-      <div className="ar-message-user px-4 py-3 text-[15px] leading-7">
+      <div className="mypi-message-user px-4 py-3 text-[15px] leading-7">
         <p className={cn("whitespace-pre-wrap", isCommand ? "font-bold text-primary" : null)}>
           {message.text}
         </p>
@@ -242,7 +242,7 @@ function MessageBody({
       <div className="text-[15px] leading-7">
         <p
           data-status={message.status}
-          className="ar-message-tool flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-4 py-3"
+          className="mypi-message-tool flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-4 py-3"
         >
           <span className="font-semibold">{message.name}</span>
           {detail ? <span className="min-w-0 break-all">{detail}</span> : null}
@@ -266,7 +266,7 @@ function MessageBody({
   }
 
   return (
-    <div className="ar-message-assistant text-[15px] leading-7">
+    <div className="mypi-message-assistant text-[15px] leading-7">
       {message.thinking || message.text ? (
         <div className="px-4 py-3">
           {message.thinking ? <ThinkingIndicator startedAt={message.startedAt} /> : null}

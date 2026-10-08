@@ -159,7 +159,7 @@ export function SessionsPane({
                     disabled={pendingId !== null}
                     data-selected={active ? "true" : undefined}
                     className={cn(
-                      "ar-session-row flex w-full flex-col items-start gap-1 border-b px-4 py-3 text-left",
+                      "mypi-session-row flex w-full flex-col items-start gap-1 border-b px-4 py-3 text-left",
                       pendingId !== null && !pending ? "opacity-60" : null,
                     )}
                   >

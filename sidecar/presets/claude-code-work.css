@@ -8,44 +8,44 @@
  */
 
 :root {
-  --ar-font-general: Inter, system-ui, sans-serif;
-  --ar-font-mono: "JetBrains Mono", Menlo, monospace;
-  --ar-primary: #d97757;
-  --ar-primary-foreground: #1f1e1d;
-  --ar-ring: #d97757;
+  --mypi-font-general: Inter, system-ui, sans-serif;
+  --mypi-font-mono: "JetBrains Mono", Menlo, monospace;
+  --mypi-primary: #d97757;
+  --mypi-primary-foreground: #1f1e1d;
+  --mypi-ring: #d97757;
 }
 
-.ar-background {
+.mypi-background {
   background-color: #faf9f5;
 }
 
-.ar-message-user {
+.mypi-message-user {
   background-color: #f0eee6;
 }
 
-.ar-message-assistant {
+.mypi-message-assistant {
   font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
 }
 
-.ar-message-tool[data-status="running"],
-.ar-message-system[data-tone="info"] {
+.mypi-message-tool[data-status="running"],
+.mypi-message-system[data-tone="info"] {
   background-color: #f1ebe4;
   color: #8a4b32;
 }
 
-.ar-message-tool[data-status="ok"],
-.ar-message-system[data-tone="success"] {
+.mypi-message-tool[data-status="ok"],
+.mypi-message-system[data-tone="success"] {
   background-color: #e7efe6;
   color: #2f6b4f;
 }
 
-.ar-message-system[data-tone="warning"] {
+.mypi-message-system[data-tone="warning"] {
   background-color: #f7ecd2;
   color: #8a5a12;
 }
 
-.ar-message-tool[data-status="error"],
-.ar-message-system[data-tone="critical"] {
+.mypi-message-tool[data-status="error"],
+.mypi-message-system[data-tone="critical"] {
   background-color: #f8e5e1;
   color: #a03a2c;
 }

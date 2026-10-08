@@ -21,7 +21,7 @@ export function ConfirmCard({
   const tone = pending ? TONES.pending : message.answer === "yes" ? TONES.confirmed : TONES.cancelled;
 
   return (
-    <div data-tone={tone} className="ar-message-system px-4 py-3 text-[15px] leading-7">
+    <div data-tone={tone} className="mypi-message-system px-4 py-3 text-[15px] leading-7">
       <p className={cn(message.answer === "yes" ? "font-bold" : "font-semibold")}>
         {pending ? message.title : message.answer === "yes" ? "CONFIRMED" : "CANCELLED"}
       </p>

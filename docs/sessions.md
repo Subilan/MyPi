@@ -2,7 +2,7 @@
 
 ## 存储
 
-会话由 sidecar 记录，一个会话一个 JSONL 文件，存在 `~/.agent-runbook/sessions/`（`AGENT_RUNBOOK_SESSIONS` 可改目录）。
+会话由 sidecar 记录，一个会话一个 JSONL 文件，存在 `~/.mypi/sessions/`（`MYPI_SESSIONS` 可改目录）。
 
 - 文件名就是会话 id，形如 `20260205-102231-a1b2c3d`：前缀是本地时间，末尾七位随机十六进制（与 git short SHA 同宽）避免同一秒重名。
 - 文件里的时间戳是 epoch 毫秒，所以 `/sessions` 里的顺序按 id 倒序排。
@@ -38,7 +38,7 @@
 `/sessions` 不在聊天记录里输出列表，而是切到一个独立页面：
 
 - 左上角是 `SESSIONS` 标题，下面列出最近的 50 个会话。
-- 每行是会话 id、是否当前会话、右侧的相对时间（悬停可见确切时间戳）与首条用户消息的摘要。选中的一行（鼠标划过即选中）用主题色淡底高亮，样式与定制入口见 [theming.md](theming.md) 的 `.ar-session-row`。
+- 每行是会话 id、是否当前会话、右侧的相对时间（悬停可见确切时间戳）与首条用户消息的摘要。选中的一行（鼠标划过即选中）用主题色淡底高亮，样式与定制入口见 [theming.md](theming.md) 的 `.mypi-session-row`。
 - 底部左侧的搜索框是 shadcn 的 `InputGroup` 加前置搜索图标，整行默认收起为零高度，敲键盘直接展开并过滤列表，顶部没有额外的状态栏。
 - 键盘 ↑ / ↓ 移动选中行、Enter 切换；鼠标划过某一行高亮也跟着过去、单击直接切换。
 - 搜索框里输入关键词按会话 id 与 user / assistant 正文过滤列表，Esc 先清空关键词、关键词为空时再返回聊天页。

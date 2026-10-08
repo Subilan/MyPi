@@ -5,7 +5,7 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { parse } from "smol-toml";
 
 export const DEFAULT_SYSTEM_PROMPT = [
-  "You are the assistant behind agent-runbook, a desktop app.",
+  "You are the assistant behind MyPi, a desktop app.",
   "Answer in the user's language and keep replies concise.",
 ].join(" ");
 
@@ -21,7 +21,7 @@ const THINKING_LEVELS: readonly ThinkingLevel[] = [
   "max",
 ];
 
-const TEMPLATE = `# agent-runbook 配置
+const TEMPLATE = `# MyPi 配置
 
 provider = "deepseek"
 model = "deepseek-flash"
@@ -50,9 +50,9 @@ export interface SettingsResult {
 }
 
 export function resolveSettingsPath(): string {
-  const override = process.env.AGENT_RUNBOOK_SETTINGS?.trim();
+  const override = process.env.MYPI_SETTINGS?.trim();
   if (override) return override;
-  return path.join(homedir(), ".agent-runbook", "settings.toml");
+  return path.join(homedir(), ".mypi", "settings.toml");
 }
 
 export function loadSettings(): SettingsResult {

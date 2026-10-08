@@ -8,7 +8,7 @@
 
 Rust 侧按顺序探测候选，逐个执行 `node --version`，取第一个主版本 ≥ 22 的：
 
-1. `AGENT_RUNBOOK_NODE` 指定的路径
+1. `MYPI_NODE` 指定的路径
 2. `PATH`
 3. 常见安装位置：Volta / fnm / asdf / mise / nvm / scoop / Homebrew / 系统目录等
 
@@ -24,7 +24,7 @@ Rust 侧按顺序探测候选，逐个执行 `node --version`，取第一个主�
 
 | 变量 | 作用 |
 | --- | --- |
-| `AGENT_RUNBOOK_NODE` | 指定用哪个 node 二进制 |
-| `AGENT_RUNBOOK_AGENT_SCRIPT` | 指定跑哪个 agent 产物，调试用 |
+| `MYPI_NODE` | 指定用哪个 node 二进制 |
+| `MYPI_AGENT_SCRIPT` | 指定跑哪个 agent 产物，调试用 |
 
 Windows 下启动子进程会带 `CREATE_NO_WINDOW`，避免弹出控制台窗口。

@@ -2,7 +2,7 @@
 
 ## 配置文件
 
-配置读 `~/.agent-runbook/settings.toml`（`AGENT_RUNBOOK_SETTINGS` 可改路径）。文件不存在时 sidecar 会生成一份默认的，权限 0600：
+配置读 `~/.mypi/settings.toml`（`MYPI_SETTINGS` 可改路径）。文件不存在时 sidecar 会生成一份默认的，权限 0600：
 
 ```toml
 provider = "deepseek"
@@ -22,7 +22,7 @@ thinking = "high"
 | `model` | 模型 id，从 pi-ai 的目录里查 |
 | `api_key` | 留空时回退到环境变量，例如 `DEEPSEEK_API_KEY` |
 | `agent.thinking` | `off / minimal / low / medium / high / xhigh / max`，实际生效档位由模型的 thinking 能力决定 |
-| `agent.system_prompt` | 只是首次生成系统提示词文件的种子，之后由 `~/.agent-runbook/system-prompt.md` 决定 |
+| `agent.system_prompt` | 只是首次生成系统提示词文件的种子，之后由 `~/.mypi/system-prompt.md` 决定 |
 
 ## 行为约定
 

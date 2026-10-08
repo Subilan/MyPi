@@ -3,7 +3,7 @@
 ```
 shared/protocol.ts            前端与 sidecar 共用的 JSONL 协议类型
 sidecar/src/index.ts          stdin/stdout 上的 JSONL 主循环
-sidecar/src/settings.ts       读取 ~/.agent-runbook/settings.toml
+sidecar/src/settings.ts       读取 ~/.mypi/settings.toml
 sidecar/src/theme.ts          theme.css 的读写与模板
 sidecar/src/presets.ts        内置预设的读取与元信息解析
 sidecar/presets/*.css         内置界面预设，文件头 /** 写名称、介绍、作者、协议、版本

@@ -4,36 +4,36 @@ import path from "node:path";
 import type { AgentThemeFileData } from "../../shared/protocol.ts";
 import { findPreset, presetSummaries, UI_PRESETS } from "./presets.ts";
 
-export const THEME_TEMPLATE = `/* agent-runbook 主题
+export const THEME_TEMPLATE = `/* MyPi 主题
  *
  * 在这里写 CSS 即可，文件在内置样式之后注入，所以同名样式以这里为准。
  *
  * 可定制的元素：
- *   .ar-background                          窗口背景
- *   .ar-message-user                        用户消息
- *   .ar-message-assistant                   助手消息
- *   .ar-message-tool                        工具消息，配 [data-status="running|ok|error"]
- *   .ar-message-system                      系统消息，配 [data-tone="info|success|warning|critical|neutral"]
- *   .ar-composer                            输入框外壳
- *   .ar-composer-input                      输入框本体
+ *   .mypi-background          窗口背景
+ *   .mypi-message-user        用户消息
+ *   .mypi-message-assistant   助手消息
+ *   .mypi-message-tool        工具消息，配 [data-status="running|ok|error"]
+ *   .mypi-message-system      系统消息，配 [data-tone="info|success|warning|critical|neutral"]
+ *   .mypi-composer            输入框外壳
+ *   .mypi-composer-input      输入框本体
  *
  * 可覆盖的全局变量：
- *   --ar-font-general  --ar-font-mono
- *   --ar-foreground  --ar-muted  --ar-muted-foreground
- *   --ar-border  --ar-input
- *   --ar-primary  --ar-primary-foreground  --ar-ring  --ar-destructive
+ *   --mypi-font-general  --mypi-font-mono
+ *   --mypi-foreground  --mypi-muted  --mypi-muted-foreground
+ *   --mypi-border  --mypi-input
+ *   --mypi-primary  --mypi-primary-foreground  --mypi-ring  --mypi-destructive
  *
  * 例：
- *   :root { --ar-primary: #d97757; }
- *   .ar-background { background-color: #faf9f5; }
- *   .ar-message-user { background-color: #f0eee6; }
+ *   :root { --mypi-primary: #d97757; }
+ *   .mypi-background { background-color: #faf9f5; }
+ *   .mypi-message-user { background-color: #f0eee6; }
  */
 `;
 
 export function resolveThemePath(): string {
-  const override = process.env.AGENT_RUNBOOK_THEME?.trim();
+  const override = process.env.MYPI_THEME?.trim();
   if (override) return override;
-  return path.join(homedir(), ".agent-runbook", "theme.css");
+  return path.join(homedir(), ".mypi", "theme.css");
 }
 
 export class ThemeFile {

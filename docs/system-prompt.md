@@ -2,7 +2,7 @@
 
 ## 文件
 
-系统提示词存成一个文件：`~/.agent-runbook/system-prompt.md`（`AGENT_RUNBOOK_SYSTEM_PROMPT` 可改路径）。
+系统提示词存成一个文件：`~/.mypi/system-prompt.md`（`MYPI_SYSTEM_PROMPT` 可改路径）。
 
 - sidecar 启动时文件不存在就用 settings.toml 里的 `system_prompt` 或内置默认值生成一份，之后以文件为准。
 - 保存时 sidecar 会带上已有对话重建 Agent，新提示词从下一次请求开始生效，历史消息不丢。

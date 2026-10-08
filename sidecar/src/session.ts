@@ -16,7 +16,7 @@ const PREVIEW_CHARS = 60;
 const ID_PATTERN = /^[A-Za-z0-9._-]+$/;
 
 export function resolveSessionsDir(): string {
-  const override = process.env.AGENT_RUNBOOK_SESSIONS?.trim();
+  const override = process.env.MYPI_SESSIONS?.trim();
   if (override) return override;
   return path.join(path.dirname(resolveSettingsPath()), "sessions");
 }

@@ -49,21 +49,21 @@ function previewText(message: ChatMessage): string {
 function rowSurface(message: ChatMessage): { className: string; status?: string; tone?: string } {
   switch (message.role) {
     case "user":
-      return { className: "ar-message-user" };
+      return { className: "mypi-message-user" };
     case "tool":
-      return { className: "ar-message-tool", status: message.status };
+      return { className: "mypi-message-tool", status: message.status };
     case "notice":
-      return { className: "ar-message-system", tone: "info" };
+      return { className: "mypi-message-system", tone: "info" };
     case "error":
-      return { className: "ar-message-system", tone: "critical" };
+      return { className: "mypi-message-system", tone: "critical" };
     case "confirm":
       return {
-        className: "ar-message-system",
+        className: "mypi-message-system",
         tone:
           message.answer === "yes" ? "success" : message.answer === "no" ? "neutral" : "warning",
       };
     default:
-      return { className: "ar-message-assistant" };
+      return { className: "mypi-message-assistant" };
   }
 }
 

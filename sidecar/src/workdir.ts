@@ -3,11 +3,11 @@ import { homedir } from "node:os";
 import path from "node:path";
 
 export function resolveInitialWorkdir(): string {
-  const override = process.env.AGENT_RUNBOOK_WORKDIR?.trim();
+  const override = process.env.MYPI_WORKDIR?.trim();
   if (!override) return homedir();
   const candidate = normalizeDir(override, homedir());
   if (isDirectory(candidate)) return candidate;
-  process.stderr.write(`[sidecar] warn: AGENT_RUNBOOK_WORKDIR 不是可用目录，改用 ${homedir()}\n`);
+  process.stderr.write(`[sidecar] warn: MYPI_WORKDIR 不是可用目录，改用 ${homedir()}\n`);
   return homedir();
 }
 

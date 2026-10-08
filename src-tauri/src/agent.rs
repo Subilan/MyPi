@@ -11,8 +11,8 @@ use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 pub const RECORD_EVENT: &str = "agent://record";
 
 const NODE_MIN_MAJOR: u32 = 22;
-const NODE_ENV_OVERRIDE: &str = "AGENT_RUNBOOK_NODE";
-const SCRIPT_ENV_OVERRIDE: &str = "AGENT_RUNBOOK_AGENT_SCRIPT";
+const NODE_ENV_OVERRIDE: &str = "MYPI_NODE";
+const SCRIPT_ENV_OVERRIDE: &str = "MYPI_AGENT_SCRIPT";
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -495,7 +495,7 @@ fn closed_record(reason: &str) -> serde_json::Value {
 }
 
 fn debug_log(message: impl std::fmt::Display) {
-    if env::var_os("AGENT_RUNBOOK_DEBUG").is_some() {
+    if env::var_os("MYPI_DEBUG").is_some() {
         eprintln!("[agent] {message}");
     }
 }

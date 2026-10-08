@@ -65,7 +65,7 @@ export function DeliveryCard({
   const suggestions = status === "failure" ? readStrings(data.suggestion) : [];
 
   return (
-    <div data-tone={tone} className="ar-message-system px-4 py-3 text-[15px] leading-7">
+    <div data-tone={tone} className="mypi-message-system px-4 py-3 text-[15px] leading-7">
       <p className={cn(status === "success" ? "font-bold" : "font-semibold")}>
         {status === "success" ? "DONE" : "FAILURE"}
       </p>

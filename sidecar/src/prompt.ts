@@ -8,7 +8,7 @@ export interface PromptFile {
 }
 
 export function resolvePromptPath(): string {
-  const override = process.env.AGENT_RUNBOOK_SYSTEM_PROMPT?.trim();
+  const override = process.env.MYPI_SYSTEM_PROMPT?.trim();
   if (override) return override;
   return path.join(path.dirname(resolveSettingsPath()), "system-prompt.md");
 }

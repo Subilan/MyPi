@@ -2,7 +2,7 @@
 
 ## 基本机制
 
-主题就是一份 CSS 文件，默认在 `~/.agent-runbook/theme.css`（`AGENT_RUNBOOK_THEME` 可改路径），文件不存在时 sidecar 生成一份带说明的模板。
+主题就是一份 CSS 文件，默认在 `~/.mypi/theme.css`（`MYPI_THEME` 可改路径），文件不存在时 sidecar 生成一份带说明的模板。
 
 - 注入到内置样式之后，写的是普通 CSS，选择器、伪类、媒体查询都能用。
 - 同名样式以文件里的为准，保存后立即生效，不需要重启。
@@ -13,14 +13,14 @@
 
 | class | 元素 |
 | --- | --- |
-| `.ar-background` | 窗口背景，挂在 `body` 上，聊天、会话列表、跳转、编辑器全部共用 |
-| `.ar-message-user` | 用户消息 |
-| `.ar-message-assistant` | 助手消息 |
-| `.ar-message-tool` | 工具消息，配 `[data-status="running\|ok\|error"]` |
-| `.ar-message-system` | 系统消息，配 `[data-tone="info\|success\|warning\|critical\|neutral"]` |
-| `.ar-composer` | 输入框外壳 |
-| `.ar-composer-input` | 输入框本体 |
-| `.ar-session-row` | 会话列表行，选中态配 `[data-selected="true"]`，默认是主题色 13% 的淡底 |
+| `.mypi-background` | 窗口背景，挂在 `body` 上，聊天、会话列表、跳转、编辑器全部共用 |
+| `.mypi-message-user` | 用户消息 |
+| `.mypi-message-assistant` | 助手消息 |
+| `.mypi-message-tool` | 工具消息，配 `[data-status="running\|ok\|error"]` |
+| `.mypi-message-system` | 系统消息，配 `[data-tone="info\|success\|warning\|critical\|neutral"]` |
+| `.mypi-composer` | 输入框外壳 |
+| `.mypi-composer-input` | 输入框本体 |
+| `.mypi-session-row` | 会话列表行，选中态配 `[data-selected="true"]`，默认是主题色 13% 的淡底 |
 
 系统消息涵盖通知、错误、确认卡、交付卡与选择题卡。工具状态与系统语气用属性选择器区分，不另外暴露变量。
 
@@ -30,22 +30,22 @@
 
 | 变量 | 作用 |
 | --- | --- |
-| `--ar-font-general` | 正文与界面字体 |
-| `--ar-font-mono` | 代码块与编辑器字体 |
-| `--ar-foreground` | 正文色 |
-| `--ar-muted`、`--ar-muted-foreground` | 次级底色与次级文字色 |
-| `--ar-border`、`--ar-input` | 边框与输入框边框 |
-| `--ar-primary`、`--ar-primary-foreground`、`--ar-ring` | 主题色、主题色上的文字色、聚焦环 |
-| `--ar-destructive` | 错误色 |
+| `--mypi-font-general` | 正文与界面字体 |
+| `--mypi-font-mono` | 代码块与编辑器字体 |
+| `--mypi-foreground` | 正文色 |
+| `--mypi-muted`、`--mypi-muted-foreground` | 次级底色与次级文字色 |
+| `--mypi-border`、`--mypi-input` | 边框与输入框边框 |
+| `--mypi-primary`、`--mypi-primary-foreground`、`--mypi-ring` | 主题色、主题色上的文字色、聚焦环 |
+| `--mypi-destructive` | 错误色 |
 
 ## 示例
 
 ```css
-:root { --ar-primary: #d97757; }
-.ar-background { background-color: #faf9f5; }
-.ar-message-user { background-color: #f0eee6; }
-.ar-message-tool[data-status="ok"] { background-color: #e7efe6; color: #2f6b4f; }
-.ar-session-row[data-selected="true"] { background-color: #f0eee6; }
+:root { --mypi-primary: #d97757; }
+.mypi-background { background-color: #faf9f5; }
+.mypi-message-user { background-color: #f0eee6; }
+.mypi-message-tool[data-status="ok"] { background-color: #e7efe6; color: #2f6b4f; }
+.mypi-session-row[data-selected="true"] { background-color: #f0eee6; }
 ```
 
 ## /ui 指令
@@ -60,7 +60,7 @@
 
 `/ui` 是保留的命名空间：缺名字或子命令写错时只打印用法并列出预设，不会把这条消息发给模型，子命令与预设名都支持唯一前缀。`/ui apply` 成功后只提示预设的 Label（默认模板则提示默认主题），不回显文件路径与内容。
 
-预设 `claude-code-work` 是 Claude Code 那种暖色纸感风格，模型输出（`.ar-message-assistant`）用衬线字体，代码块保持等宽。应用后就是一份普通 theme.css，可以接着在里面改。
+预设 `claude-code-work` 是 Claude Code 那种暖色纸感风格，模型输出（`.mypi-message-assistant`）用衬线字体，代码块保持等宽。应用后就是一份普通 theme.css，可以接着在里面改。
 
 ## 内置预设
 

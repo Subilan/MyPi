@@ -1,6 +1,6 @@
 import type { AgentThemeFileData } from "@shared/protocol";
 
-const STYLE_ID = "ar-theme";
+const STYLE_ID = "mypi-theme";
 
 export function applyThemeCss(css: string): void {
   let style = document.getElementById(STYLE_ID) as HTMLStyleElement | null;

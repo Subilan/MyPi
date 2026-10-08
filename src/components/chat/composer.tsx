@@ -172,7 +172,7 @@ export function Composer({
     <div
       ref={rootRef}
       data-dragging={dragging ? "true" : undefined}
-      className="ar-composer shrink-0 transition-colors"
+      className="mypi-composer shrink-0 transition-colors"
     >
       <div className="flex w-full items-end gap-2 px-4 py-3">
         <Textarea
@@ -193,7 +193,7 @@ export function Composer({
           autoComplete="off"
           {...({ writingsuggestions: "false" } as Record<string, string>)}
           className={cn(
-            "ar-composer-input min-h-9 flex-1 resize-none field-sizing-fixed px-3 py-1.5 text-[15px] leading-6 md:text-[15px]",
+            "mypi-composer-input min-h-9 flex-1 resize-none field-sizing-fixed px-3 py-1.5 text-[15px] leading-6 md:text-[15px]",
             isCommand ? "font-bold text-primary" : null,
             dragging ? "border-primary ring-3 ring-ring/40" : null,
           )}

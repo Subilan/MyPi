@@ -269,7 +269,7 @@ export function DecisionCard({
 
   return (
     <TooltipProvider>
-      <div data-tone="info" className="ar-message-system px-4 py-3 text-[15px] leading-7">
+      <div data-tone="info" className="mypi-message-system px-4 py-3 text-[15px] leading-7">
         <p className="font-semibold">CLARIFY</p>
         <div className="mt-3 flex flex-col gap-4">
           {questions.map((question, index) => (

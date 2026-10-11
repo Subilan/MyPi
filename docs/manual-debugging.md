@@ -16,7 +16,7 @@ printf '{"id":"1","type":"hello","name":"su"}\n{"id":"2","type":"prompt","text":
 | 变量 | 作用 |
 | --- | --- |
 | `MYPI_SETTINGS` | 指向另一份配置文件，方便用临时配置调 sidecar |
-| `MYPI_DEBUG=1` | 桥接调试。Rust 侧把找到的 node、产物路径、每条命令和每条记录打到 stderr |
+| `MYPI_DEBUG=1` | 桥接调试。Rust 侧把找到的 node、产物路径、每条命令和每条记录打到 stderr；命令 payload 原样记录，会包含 prompt 正文与决策答案 |
 
 ```bash
 MYPI_DEBUG=1 npm run tauri dev

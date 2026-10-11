@@ -27,6 +27,7 @@ thinking = "high"
 ## 行为约定
 
 - sidecar 启动时读一次配置，改完要重启应用。
+- 配置问题分两级：缺 provider / model、TOML 解析失败、没有可用的 key 属于致命错误，agent 停用并在界面提示；首次生成默认配置、`thinking` 拼错而回退到默认档属于提示，照常运行，只把提示显示出来。
 - 加一个 provider 需要工厂函数和它的环境变量名。
 - 密钥现在只落在本地文件或环境变量里，还没有系统密钥串与设置界面。
 - 界面样式不在 settings.toml 里，见 [theming.md](theming.md)。

@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { CodeEditor } from "@/components/editor/code-editor";
+import { useLatestRef } from "@/hooks/use-latest-ref";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -48,8 +49,7 @@ export function EditorPane({
     if (saved !== false) onClose();
   };
 
-  const handlers = useRef({ onSave, onClose, dirty, confirmOpen, saveAndClose, requestClose });
-  handlers.current = { onSave, onClose, dirty, confirmOpen, saveAndClose, requestClose };
+  const handlers = useLatestRef({ onSave, onClose, dirty, confirmOpen, saveAndClose, requestClose });
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -68,7 +68,7 @@ export function EditorPane({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [handlers]);
 
   return (
     <section className="flex h-svh flex-col">

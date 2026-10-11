@@ -20,38 +20,28 @@ export interface DecisionAnswer {
   value: string | string[];
 }
 
-export interface AgentRequest {
-  id: string;
-  type:
-    | "hello"
-    | "prompt"
-    | "abort"
-    | "state"
-    | "clear"
-    | "system_prompt"
-    | "system_prompt_save"
-    | "cwd"
-    | "cwd_set"
-    | "mode_set"
-    | "decision_answer"
-    | "session_list"
-    | "session_search"
-    | "session_switch"
-    | "session_tree"
-    | "session_jump"
-    | "theme"
-    | "theme_save"
-    | "ui_preset";
-  text?: string;
-  name?: string;
-  path?: string;
-  mode?: ChatMode;
-  toolCallId?: string;
-  answers?: DecisionAnswer[];
-  sessionId?: string;
-  nodeId?: string;
-  query?: string;
-}
+export type AgentRequestPayload =
+  | { type: "hello"; name?: string }
+  | { type: "prompt"; text: string }
+  | { type: "abort" }
+  | { type: "state" }
+  | { type: "clear" }
+  | { type: "system_prompt" }
+  | { type: "system_prompt_save"; text: string }
+  | { type: "cwd" }
+  | { type: "cwd_set"; path: string }
+  | { type: "mode_set"; mode: ChatMode }
+  | { type: "decision_answer"; toolCallId: string; answers: DecisionAnswer[] }
+  | { type: "session_list" }
+  | { type: "session_search"; query: string }
+  | { type: "session_switch"; sessionId: string }
+  | { type: "session_tree" }
+  | { type: "session_jump"; nodeId: string }
+  | { type: "theme" }
+  | { type: "theme_save"; text: string }
+  | { type: "ui_preset"; name: string };
+
+export type AgentRequest = AgentRequestPayload & { id: string };
 
 export interface AgentRuntimeInfo {
   protocol: number;

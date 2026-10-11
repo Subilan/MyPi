@@ -8,6 +8,8 @@
 | `npm run sidecar:build` | 只重新打包 sidecar |
 | `npm run sidecar:dev` | 打完包后直接用 node 跑 sidecar |
 | `npm run typecheck` | 前端与 sidecar 两套 tsconfig 一起查 |
+| `npm run lint` | ESLint 检查前端、sidecar 与脚本 |
+| `npm run test` | Vitest 跑单测（前端与 sidecar 的纯函数） |
 
 ## 构建钩子
 

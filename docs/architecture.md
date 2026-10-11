@@ -24,6 +24,8 @@ React (WebView)  ←→  Rust 宿主 (Tauri)  ←→  sidecar (用户机器上�
 
 协议类型定义在 `shared/protocol.ts`，前端与 sidecar 共用一份。传输层用最朴素的 stdin/stdout，每行一条 JSON。
 
+前端发出请求后会按 id 等对应的响应；30 秒内没有等到就以超时错误拒绝，避免 sidecar 卡住时调用方永久挂起。
+
 ## sidecar 打包
 
 - 用 esbuild 打成一个平台无关的 `index.mjs`（约 1.4MB），作为 Tauri 的 resource 随应用分发。

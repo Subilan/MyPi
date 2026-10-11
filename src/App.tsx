@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { toast } from "sonner";
 import { Composer } from "@/components/chat/composer";
@@ -9,6 +9,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { useAgentChat } from "@/hooks/use-agent-chat";
 import { useEditorDocument } from "@/hooks/use-editor-document";
 import { agentClient, isTauriRuntime } from "@/lib/agent/client";
+import { describe } from "@/lib/chat/agent-helpers";
 import { applyThemeCss } from "@/lib/theme";
 
 const EditorPane = lazy(() =>
@@ -42,6 +43,13 @@ export default function App() {
   }, [client, open]);
 
   const chat = useAgentChat({ onEditSystemPrompt: openSystemPrompt, onEditTheme: openTheme });
+  const { transcript, sessions, jump, runtime } = chat;
+
+  const history = useMemo(
+    () =>
+      transcript.messages.flatMap((message) => (message.role === "user" ? [message.text] : [])),
+    [transcript.messages],
+  );
 
   const saveDocument = useCallback(async (): Promise<boolean> => {
     if (!editorDocument) return false;
@@ -76,7 +84,7 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [editorDocument]);
 
-  const notice = chat.bridgeError ?? chat.configError;
+  const notice = runtime.bridgeError ?? runtime.configError;
 
   return (
     <>
@@ -100,19 +108,19 @@ export default function App() {
             onClose={close}
           />
         </Suspense>
-      ) : chat.sessionBrowser ? (
+      ) : sessions.browser ? (
         <SessionsPane
-          state={chat.sessionBrowser}
-          onSelect={chat.switchSession}
-          onSearch={chat.searchSessions}
-          onClose={chat.closeSessionBrowser}
+          state={sessions.browser}
+          onSelect={sessions.switchTo}
+          onSearch={sessions.search}
+          onClose={sessions.close}
         />
-      ) : chat.jumpTree ? (
+      ) : jump.tree ? (
         <JumpView
-          tree={chat.jumpTree}
-          mode={chat.mode}
-          onCommit={chat.commitJump}
-          onCancel={chat.closeJumpView}
+          tree={jump.tree}
+          mode={runtime.mode}
+          onCommit={jump.commit}
+          onCancel={jump.close}
         />
       ) : (
         <main className="flex h-svh flex-col">
@@ -123,23 +131,21 @@ export default function App() {
           ) : null}
 
           <Transcript
-            messages={chat.messages}
-            mode={chat.mode}
-            running={chat.running}
-            waitingForUser={chat.waitingForUser}
-            runStartedAt={chat.runStartedAt}
-            onDecisionAnswer={chat.answerDecision}
-            onConfirmAnswer={chat.answerConfirm}
+            messages={transcript.messages}
+            mode={runtime.mode}
+            running={transcript.running}
+            waitingForUser={transcript.waitingForUser}
+            runStartedAt={transcript.runStartedAt}
+            onDecisionAnswer={transcript.answerDecision}
+            onConfirmAnswer={transcript.answerConfirm}
           />
           <Composer
-            running={chat.running}
-            locked={chat.confirmPending}
-            seed={chat.composerSeed}
-            history={chat.messages
-              .filter((message) => message.role === "user")
-              .map((message) => message.text)}
-            onSend={chat.send}
-            onStop={chat.stop}
+            running={transcript.running}
+            locked={transcript.confirmPending}
+            seed={jump.seed}
+            history={history}
+            onSend={transcript.send}
+            onStop={transcript.stop}
           />
         </main>
       )}
@@ -150,8 +156,4 @@ export default function App() {
 
 function fileName(filePath: string): string {
   return filePath.split(/[\\/]/).pop() ?? filePath;
-}
-
-function describe(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

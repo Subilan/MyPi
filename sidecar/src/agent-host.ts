@@ -47,11 +47,10 @@ export interface AgentHost {
   switchSession(id: string): Promise<AgentSessionData>;
   tree(): AgentSessionData;
   jump(nodeId: string): Promise<AgentSessionData>;
-  recordError(message: string): void;
 }
 
 export function createAgentHost(onEvent: (event: AgentEvent) => void): AgentHost {
-  const { settings, error } = loadSettings();
+  const { settings, error, warnings } = loadSettings();
   const file = openPromptFile(settings.systemPrompt);
   const workdir = new Workdir(resolveInitialWorkdir());
   const store = new SessionStore();
@@ -61,7 +60,6 @@ export function createAgentHost(onEvent: (event: AgentEvent) => void): AgentHost
     sessionsDir: () => store.dir,
     searchSessions: (query: string) => store.search(query),
     sessions: () => store.list(),
-    recordError: (message: string) => store.error(message),
   };
 
   const promptFile = (apply?: (text: string) => void) => ({
@@ -217,7 +215,7 @@ export function createAgentHost(onEvent: (event: AgentEvent) => void): AgentHost
 
   return {
     ...info,
-    configError: null,
+    configError: warnings.length > 0 ? warnings.join("；") : null,
     ...sessionApi,
     ...promptFile((text) => {
       promptText = text;
@@ -266,8 +264,14 @@ export function createAgentHost(onEvent: (event: AgentEvent) => void): AgentHost
     },
     async prompt(text: string) {
       forcedContinues = 0;
+      const sessionId = store.id;
       store.user(text);
-      await agent.prompt(text);
+      try {
+        await agent.prompt(text);
+      } catch (error) {
+        if (store.id === sessionId) store.error(errorMessage(error));
+        throw error;
+      }
     },
     async abort() {
       agent.abort();
@@ -359,4 +363,8 @@ function ambientKey(envKeys: readonly string[]): string {
     if (value) return value;
   }
   return "";
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

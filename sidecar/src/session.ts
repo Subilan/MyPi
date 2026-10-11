@@ -63,7 +63,7 @@ export class SessionStore {
   #meta: SessionMeta | null = null;
   #started = false;
   #warned = false;
-  #lines = 0;
+  #nextIndex = 0;
   #head: string | null = null;
   #toolStartedAt = new Map<string, number>();
   #toolDurations = new Map<string, number>();
@@ -89,7 +89,7 @@ export class SessionStore {
     this.#id = newSessionId();
     this.#meta = { ...meta };
     this.#started = false;
-    this.#lines = 0;
+    this.#nextIndex = 0;
     this.#head = null;
     this.#toolStartedAt.clear();
     this.#toolDurations.clear();
@@ -105,7 +105,7 @@ export class SessionStore {
     this.#id = id;
     this.#meta = null;
     this.#started = true;
-    this.#lines = records.length;
+    this.#nextIndex = nextLineIndex(records);
     this.#head = lastNodeId(records);
     this.#toolStartedAt.clear();
     this.#toolDurations.clear();
@@ -337,7 +337,7 @@ export class SessionStore {
       if (meta) this.#emitLine({ kind: "session", id: this.#id, at: dayjs().valueOf(), ...meta });
       this.#started = true;
     }
-    const id = `line${this.#lines}`;
+    const id = `line${this.#nextIndex}`;
     const next = { ...record, id, parent: this.#head } as StoredRecord;
     if (!this.#emitLine(next)) return;
     this.#head = id;
@@ -347,7 +347,7 @@ export class SessionStore {
     try {
       mkdirSync(this.#dir, { recursive: true });
       appendFileSync(this.file(), `${JSON.stringify(record)}\n`, { mode: 0o600 });
-      this.#lines += 1;
+      this.#nextIndex += 1;
       return true;
     } catch (error) {
       if (this.#warned) return false;
@@ -388,6 +388,15 @@ function lastNodeId(records: StoredRecord[]): string | null {
     if (record.kind !== "session") return record.id ?? null;
   }
   return null;
+}
+
+function nextLineIndex(records: StoredRecord[]): number {
+  let max = -1;
+  for (const record of records) {
+    const match = /^line(\d+)$/.exec(record.id ?? "");
+    if (match) max = Math.max(max, Number.parseInt(match[1], 10));
+  }
+  return max + 1;
 }
 
 function toEntry(

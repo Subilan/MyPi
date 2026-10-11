@@ -137,10 +137,6 @@ export function Composer({
     };
   }, [addPaths, withinComposer]);
 
-  useEffect(() => {
-    setHistoryIndex(null);
-  }, [history.length]);
-
   useLayoutEffect(() => {
     const node = textareaRef.current;
     if (!node) return;
@@ -150,7 +146,7 @@ export function Composer({
   }, [draft]);
 
   const recall = (index: number | null) => {
-    const text = index === null ? stashRef.current : history[index];
+    const text = index === null ? stashRef.current : (history[index] ?? "");
     if (text !== draft) {
       caretToEndRef.current = true;
       setDraft(text);

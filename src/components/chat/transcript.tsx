@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { memo, useLayoutEffect, useRef } from "react";
 import type { ChatMode, DecisionAnswer } from "@shared/protocol";
 import { ConfirmCard } from "@/components/chat/confirm-card";
 import { DecisionCard } from "@/components/chat/decision-card";
@@ -7,71 +7,12 @@ import { Markdown } from "@/components/chat/markdown";
 import { ThinkingIndicator } from "@/components/chat/thinking-indicator";
 import { ToolTimer } from "@/components/chat/tool-timer";
 import { parseCommand } from "@/lib/chat/commands";
-import type { ChatMessage, ToolMessage } from "@/lib/chat/types";
+import { bashTimeoutMs, isHidden, toolDetail } from "@/lib/chat/present";
+import type { ChatMessage } from "@/lib/chat/types";
 import { formatClock, formatIso, nowMs } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 const STICK_THRESHOLD_PX = 96;
-
-const MAX_ARGS_CHARS = 400;
-
-const DELIVER_TOOLS = new Set(["report_success", "report_failure", "request_user_decision"]);
-
-const BASH_DEFAULT_TIMEOUT_MS = 120_000;
-const BASH_MIN_TIMEOUT_MS = 1_000;
-const BASH_MAX_TIMEOUT_MS = 600_000;
-
-function argObject(args: unknown): Record<string, unknown> {
-  return args && typeof args === "object" ? (args as Record<string, unknown>) : {};
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function readDetail(args: Record<string, unknown>): string {
-  const path = typeof args.path === "string" ? args.path : "";
-  const offset =
-    typeof args.offset === "number" && args.offset > 0 ? Math.floor(args.offset) : null;
-  const limit = typeof args.limit === "number" && args.limit > 0 ? Math.floor(args.limit) : null;
-  if (offset !== null && limit !== null) return `${path}:${offset}-${offset + limit - 1}`;
-  if (offset !== null) return `${path}:${offset}+`;
-  if (limit !== null) return `${path}:1-${limit}`;
-  return path;
-}
-
-export function toolDetail(message: ToolMessage): string {
-  const args = argObject(message.args);
-  if (message.name === "Bash") return typeof args.command === "string" ? args.command : "";
-  if (message.name === "Read") return readDetail(args);
-  if (message.name === "Edit") return typeof args.path === "string" ? args.path : "";
-  if (message.name === "Write") {
-    const path = typeof args.path === "string" ? args.path : "";
-    const content = typeof args.content === "string" ? args.content : "";
-    const bytes = new TextEncoder().encode(content).length;
-    return path ? `${path} (${formatBytes(bytes)})` : "";
-  }
-  return formatArgs(message.args);
-}
-
-function bashTimeoutMs(args: unknown): number {
-  const value = argObject(args).timeout;
-  if (typeof value !== "number" || !Number.isFinite(value)) return BASH_DEFAULT_TIMEOUT_MS;
-  return Math.min(Math.max(value, BASH_MIN_TIMEOUT_MS), BASH_MAX_TIMEOUT_MS);
-}
-
-function formatArgs(args: unknown): string {
-  if (args === undefined || args === null) return "";
-  let text: string;
-  try {
-    text = JSON.stringify(args) ?? "";
-  } catch {
-    text = String(args);
-  }
-  return text.length > MAX_ARGS_CHARS ? `${text.slice(0, MAX_ARGS_CHARS)}…` : text;
-}
 
 function ErrorBlock({ text }: { text: string }) {
   return (
@@ -95,7 +36,7 @@ export function Transcript({
   running: boolean;
   waitingForUser: boolean;
   runStartedAt: number | null;
-  onDecisionAnswer: (toolCallId: string, answers: DecisionAnswer[]) => void;
+  onDecisionAnswer: (toolCallId: string, answers: DecisionAnswer[]) => Promise<void>;
   onConfirmAnswer: (yes: boolean) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -149,14 +90,7 @@ export function Transcript({
   );
 }
 
-export function isHidden(message: ChatMessage, mode: ChatMode): boolean {
-  if (mode !== "deliver") return false;
-  if (message.role === "assistant") return !message.error;
-  if (message.role === "tool") return !DELIVER_TOOLS.has(message.name);
-  return false;
-}
-
-function MessageRow({
+const MessageRow = memo(function MessageRow({
   message,
   mode,
   onDecisionAnswer,
@@ -164,7 +98,7 @@ function MessageRow({
 }: {
   message: ChatMessage;
   mode: ChatMode;
-  onDecisionAnswer: (toolCallId: string, answers: DecisionAnswer[]) => void;
+  onDecisionAnswer: (toolCallId: string, answers: DecisionAnswer[]) => Promise<void>;
   onConfirmAnswer: (yes: boolean) => void;
 }) {
   if (isHidden(message, mode)) return null;
@@ -184,7 +118,7 @@ function MessageRow({
       </time>
     </div>
   );
-}
+});
 
 function MessageBody({
   message,
@@ -194,7 +128,7 @@ function MessageBody({
 }: {
   message: ChatMessage;
   mode: ChatMode;
-  onDecisionAnswer: (toolCallId: string, answers: DecisionAnswer[]) => void;
+  onDecisionAnswer: (toolCallId: string, answers: DecisionAnswer[]) => Promise<void>;
   onConfirmAnswer: (yes: boolean) => void;
 }) {
   if (message.role === "confirm") {

@@ -13,6 +13,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { ToolMessage } from "@/lib/chat/types";
+import { argObject } from "@/lib/chat/present";
 
 const OTHER = "__other__";
 
@@ -37,7 +38,7 @@ function parseOptions(value: unknown): DecisionOption[] {
 }
 
 function parseQuestions(args: unknown): DecisionQuestion[] {
-  const data = (args && typeof args === "object" ? args : {}) as { questions?: unknown };
+  const data = argObject(args);
   if (!Array.isArray(data.questions)) return [];
   return data.questions.flatMap((entry) => {
     if (!entry || typeof entry !== "object") return [];
@@ -230,7 +231,7 @@ export function DecisionCard({
   onAnswer,
 }: {
   message: ToolMessage;
-  onAnswer: (toolCallId: string, answers: DecisionAnswer[]) => void;
+  onAnswer: (toolCallId: string, answers: DecisionAnswer[]) => Promise<void>;
 }) {
   const questions = parseQuestions(message.args);
   const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
@@ -256,7 +257,7 @@ export function DecisionCard({
   };
 
   const submit = () => {
-    if (!complete) return;
+    if (!complete || submitted) return;
     setSubmitted(true);
     onAnswer(
       message.toolCallId,
@@ -264,7 +265,7 @@ export function DecisionCard({
         id: question.id,
         value: resolveValue(question, answers[question.id], others[question.id] ?? ""),
       })),
-    );
+    ).catch(() => setSubmitted(false));
   };
 
   return (

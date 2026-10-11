@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import type { ChatMode } from "@shared/protocol";
-import { isHidden, toolDetail } from "@/components/chat/transcript";
+import { isHidden, previewText, rowSurface } from "@/lib/chat/present";
+import { useLatestRef } from "@/hooks/use-latest-ref";
 import { parseCommand } from "@/lib/chat/commands";
-import type { ChatMessage } from "@/lib/chat/types";
 import {
   defaultTarget,
   entryToMessage,
@@ -14,58 +14,6 @@ import {
   type ChatTree,
 } from "@/lib/chat/tree";
 import { cn } from "@/lib/utils";
-
-const DELIVER_FIELD: Record<string, string> = {
-  report_success: "description",
-  report_failure: "reason",
-  request_user_decision: "question",
-};
-
-function argObject(args: unknown): Record<string, unknown> {
-  return args && typeof args === "object" ? (args as Record<string, unknown>) : {};
-}
-
-function previewText(message: ChatMessage): string {
-  switch (message.role) {
-    case "user":
-    case "assistant":
-    case "error":
-      return message.text;
-    case "notice":
-      return [message.title, message.text].filter((part) => part.length > 0).join(" ");
-    case "tool": {
-      const field = DELIVER_FIELD[message.name];
-      if (field) {
-        const value = argObject(message.args)[field];
-        if (typeof value === "string" && value.length > 0) return value;
-      }
-      return [message.name, toolDetail(message)].filter((part) => part.length > 0).join(" ");
-    }
-    case "confirm":
-      return message.text;
-  }
-}
-
-function rowSurface(message: ChatMessage): { className: string; status?: string; tone?: string } {
-  switch (message.role) {
-    case "user":
-      return { className: "mypi-message-user" };
-    case "tool":
-      return { className: "mypi-message-tool", status: message.status };
-    case "notice":
-      return { className: "mypi-message-system", tone: "info" };
-    case "error":
-      return { className: "mypi-message-system", tone: "critical" };
-    case "confirm":
-      return {
-        className: "mypi-message-system",
-        tone:
-          message.answer === "yes" ? "success" : message.answer === "no" ? "neutral" : "warning",
-      };
-    default:
-      return { className: "mypi-message-assistant" };
-  }
-}
 
 export function JumpView({
   tree,
@@ -100,15 +48,12 @@ export function JumpView({
     return Math.max(initial.length - 1, 0);
   });
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
+  const selectedIndex = Math.min(selected, Math.max(path.length - 1, 0));
 
   useEffect(() => {
-    setSelected((index) => Math.min(index, Math.max(path.length - 1, 0)));
-  }, [path.length]);
-
-  useEffect(() => {
-    const id = path[selected];
+    const id = path[selectedIndex];
     if (id) rowRefs.current.get(id)?.scrollIntoView({ block: "nearest" });
-  }, [selected, path]);
+  }, [selectedIndex, path]);
 
   const roots = useMemo(
     () =>
@@ -144,8 +89,7 @@ export function JumpView({
     [path, roots, visible],
   );
 
-  const handlers = useRef({ path, selected, switchBranch, onCommit, onCancel });
-  handlers.current = { path, selected, switchBranch, onCommit, onCancel };
+  const handlers = useLatestRef({ path, selected: selectedIndex, switchBranch, onCommit, onCancel });
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -183,9 +127,9 @@ export function JumpView({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [handlers]);
 
-  const selectedNode = path[selected] ? visible.byId.get(path[selected]) : undefined;
+  const selectedNode = path[selectedIndex] ? visible.byId.get(path[selectedIndex]) : undefined;
 
   return (
     <section className="flex h-svh flex-col">
@@ -201,7 +145,7 @@ export function JumpView({
               if (!node) return null;
               const message = entryToMessage(node.entry);
               const surface = rowSurface(message);
-              const active = index === selected;
+              const active = index === selectedIndex;
               const fork = node.children.length > 1 || (node.parent === null && roots.length > 1);
               const isCommand = message.role === "user" && parseCommand(message.text) !== null;
               return (

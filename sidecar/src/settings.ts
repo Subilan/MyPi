@@ -47,6 +47,7 @@ export interface AgentSettings {
 export interface SettingsResult {
   settings: AgentSettings;
   error: string | null;
+  warnings: string[];
 }
 
 export function resolveSettingsPath(): string {
@@ -57,7 +58,8 @@ export function resolveSettingsPath(): string {
 
 export function loadSettings(): SettingsResult {
   const file = resolveSettingsPath();
-  const problems: string[] = [];
+  const fatal: string[] = [];
+  const warnings: string[] = [];
   let data: Record<string, unknown> = {};
   let content: string | null = null;
 
@@ -65,16 +67,16 @@ export function loadSettings(): SettingsResult {
     try {
       mkdirSync(path.dirname(file), { recursive: true });
       writeFileSync(file, TEMPLATE, { mode: 0o600 });
-      problems.push(`已生成默认配置 ${file}`);
+      warnings.push(`已生成默认配置 ${file}`);
       content = TEMPLATE;
     } catch (error) {
-      problems.push(`无法创建 ${file}：${message(error)}`);
+      fatal.push(`无法创建 ${file}：${message(error)}`);
     }
   } else {
     try {
       content = readFileSync(file, "utf8");
     } catch (error) {
-      problems.push(`无法读取 ${file}：${message(error)}`);
+      fatal.push(`无法读取 ${file}：${message(error)}`);
     }
   }
 
@@ -82,7 +84,7 @@ export function loadSettings(): SettingsResult {
     try {
       data = parse(content) as Record<string, unknown>;
     } catch (error) {
-      problems.push(`${file} 不是合法的 TOML：${message(error)}`);
+      fatal.push(`${file} 不是合法的 TOML：${message(error)}`);
     }
   }
 
@@ -93,15 +95,15 @@ export function loadSettings(): SettingsResult {
   const thinking = readString(agentSection, "thinking");
   const systemPrompt = readString(agentSection, "system_prompt");
 
-  if (!provider) problems.push(`${file} 缺少 provider`);
-  if (!model) problems.push(`${file} 缺少 model`);
+  if (!provider) fatal.push(`${file} 缺少 provider`);
+  if (!model) fatal.push(`${file} 缺少 model`);
 
   let thinkingLevel = DEFAULT_THINKING_LEVEL;
   if (thinking) {
     if (THINKING_LEVELS.includes(thinking as ThinkingLevel)) {
       thinkingLevel = thinking as ThinkingLevel;
     } else {
-      problems.push(
+      warnings.push(
         `${file} 里的 thinking = "${thinking}" 不可用，可选：${THINKING_LEVELS.join(" / ")}`,
       );
     }
@@ -116,7 +118,8 @@ export function loadSettings(): SettingsResult {
       systemPrompt: systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
       path: file,
     },
-    error: problems.length > 0 ? problems.join("；") : null,
+    error: fatal.length > 0 ? fatal.join("；") : null,
+    warnings,
   };
 }
 

@@ -7,9 +7,12 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group";
-import type { SessionBrowserState } from "@/hooks/use-agent-chat";
+import type { SessionBrowserState } from "@/hooks/use-session-browser";
+import { useLatestRef } from "@/hooks/use-latest-ref";
 import { formatDateTime, formatRelative } from "@/lib/time";
 import { cn } from "@/lib/utils";
+
+const SEARCH_DEBOUNCE_MS = 150;
 
 export function SessionsPane({
   state,
@@ -34,47 +37,39 @@ export function SessionsPane({
 
   const keyword = query.trim();
   const visible = useMemo(
-    () => (matched ? sessions.filter((session) => matched.includes(session.id)) : sessions),
-    [sessions, matched],
+    () =>
+      keyword && matched
+        ? sessions.filter((session) => matched.includes(session.id))
+        : sessions,
+    [sessions, matched, keyword],
   );
-
-  useEffect(() => {
-    setSelected(0);
-    setPendingId(null);
-    setSwitchError(null);
-    pendingRef.current = false;
-  }, [sessions]);
+  const selectedIndex = Math.min(selected, Math.max(visible.length - 1, 0));
 
   useEffect(() => {
     inputRef.current?.focus({ preventScroll: true });
   }, []);
 
   useEffect(() => {
-    setSelected(0);
-    if (!keyword) {
-      setMatched(null);
-      return;
-    }
+    if (!keyword) return;
     let cancelled = false;
-    onSearch(keyword)
-      .then((ids) => {
-        if (!cancelled) setMatched(ids);
-      })
-      .catch(() => {
-        if (!cancelled) setMatched([]);
-      });
+    const timer = window.setTimeout(() => {
+      onSearch(keyword)
+        .then((ids) => {
+          if (!cancelled) setMatched(ids);
+        })
+        .catch(() => {
+          if (!cancelled) setMatched([]);
+        });
+    }, SEARCH_DEBOUNCE_MS);
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [keyword, onSearch]);
 
   useEffect(() => {
-    setSelected((index) => Math.min(index, Math.max(visible.length - 1, 0)));
-  }, [visible.length]);
-
-  useEffect(() => {
-    itemRefs.current[selected]?.scrollIntoView({ block: "nearest" });
-  }, [selected, visible]);
+    itemRefs.current[selectedIndex]?.scrollIntoView({ block: "nearest" });
+  }, [selectedIndex, visible]);
 
   const choose = useCallback(
     (session: AgentSessionSummary | undefined) => {
@@ -91,8 +86,7 @@ export function SessionsPane({
     [onSelect],
   );
 
-  const handlers = useRef({ visible, selected, choose, onClose, keyword, setQuery });
-  handlers.current = { visible, selected, choose, onClose, keyword, setQuery };
+  const handlers = useLatestRef({ visible, selected: selectedIndex, choose, onClose, keyword, setQuery });
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -112,6 +106,7 @@ export function SessionsPane({
         event.preventDefault();
         if (current.keyword) {
           current.setQuery("");
+          setSelected(0);
           return;
         }
         current.onClose();
@@ -121,7 +116,7 @@ export function SessionsPane({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [handlers]);
 
   const notice = switchError ?? error;
 
@@ -141,7 +136,7 @@ export function SessionsPane({
         ) : (
           <ul className="mt-1 flex flex-col">
             {visible.map((session, index) => {
-              const active = index === selected;
+              const active = index === selectedIndex;
               const pending = pendingId === session.id;
               return (
                 <li key={session.id}>
@@ -207,7 +202,10 @@ export function SessionsPane({
             autoComplete="off"
             aria-label="搜索会话"
             placeholder="输入关键词，按 id 或会话内容搜索"
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setSelected(0);
+            }}
           />
         </InputGroup>
       </div>

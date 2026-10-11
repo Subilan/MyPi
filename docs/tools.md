@@ -6,7 +6,7 @@ agent 在 Regular 模式下有四个工具，实现在 `sidecar/src/tools.ts`。
 
 | 工具 | 参数 | 行为 |
 | --- | --- | --- |
-| `Read` | `path`、可选的 `offset` / `limit` | 读取文本文件，拒绝二进制；单次读取超过 20 万字符会截断并提示用 offset/limit 续读。图片按魔数识别（png / jpeg / gif / webp / bmp），以图像内容返回给多模态模型 |
+| `Read` | `path`、可选的 `offset` / `limit` | 读取文本文件，拒绝二进制；单次读取超过 20 万字符会截断并提示用 offset/limit 续读，整个文件超过 16 MB 时在读取前直接拒绝并提示改用 Bash 分段查看。图片按魔数识别（png / jpeg / gif / webp / bmp），以图像内容返回给多模态模型 |
 | `Edit` | `path`、`oldText`、`newText` | 精确替换文件中唯一出现的一段原文，匹配 0 处或多处都会报错 |
 | `Write` | `path`、`content` | 覆盖写入，父目录不存在时递归创建 |
 | `Bash` | `command`、可选的 `timeout` | 在工作目录下跑 shell（POSIX 走 `$SHELL -lc`，Windows 走 `cmd /c`），返回退出码、stdout、stderr；默认超时 120 秒，可调到 600 秒，超时或中断时终止整个进程组 |

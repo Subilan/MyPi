@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { basicSetup } from "codemirror";
+import { useLatestRef } from "@/hooks/use-latest-ref";
 
 export interface CodeEditorProps {
   value: string;
@@ -42,8 +43,8 @@ const theme = EditorView.theme({
 export function CodeEditor({ value, onChange }: CodeEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
-  const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
+  const onChangeRef = useLatestRef(onChange);
+  const initialValueRef = useRef(value);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -52,7 +53,7 @@ export function CodeEditor({ value, onChange }: CodeEditorProps) {
     const view = new EditorView({
       parent: host,
       state: EditorState.create({
-        doc: value,
+        doc: initialValueRef.current,
         extensions: [
           basicSetup,
           EditorView.lineWrapping,
@@ -70,7 +71,7 @@ export function CodeEditor({ value, onChange }: CodeEditorProps) {
       view.destroy();
       viewRef.current = null;
     };
-  }, []);
+  }, [onChangeRef]);
 
   useEffect(() => {
     const view = viewRef.current;

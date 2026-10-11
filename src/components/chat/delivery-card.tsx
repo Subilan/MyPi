@@ -1,6 +1,7 @@
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
 import { isTauriRuntime } from "@/lib/agent/client";
+import { argObject } from "@/lib/chat/present";
 import { cn } from "@/lib/utils";
 
 const TONES = {
@@ -57,7 +58,7 @@ export function DeliveryCard({
   status: "success" | "failure";
   args: unknown;
 }) {
-  const data = (args && typeof args === "object" ? args : {}) as Record<string, unknown>;
+  const data = argObject(args);
   const tone = TONES[status];
   const body = status === "success" ? readString(data.description) : readString(data.reason);
   const artifacts = status === "success" ? readStrings(data.artifacts) : [];

@@ -111,13 +111,15 @@ async function handle(request: AgentRequest): Promise<void> {
         return;
       }
       emit({ type: "response", id: request.id, ok: true, data: { accepted: true } });
+      const sessionId = host.sessionId();
       try {
         await host.prompt(text);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         log("error", `prompt failed: ${message}`);
-        host.recordError(message);
-        emit({ type: "event", name: "run_error", data: { message } });
+        if (host.sessionId() === sessionId) {
+          emit({ type: "event", name: "run_error", data: { message } });
+        }
       }
       return;
     }
@@ -150,7 +152,7 @@ async function handle(request: AgentRequest): Promise<void> {
         type: "response",
         id: request.id,
         ok: true,
-        data: { ids: host.searchSessions(request.query ?? "") },
+        data: { ids: host.searchSessions(request.query) },
       });
       return;
     }
@@ -159,7 +161,7 @@ async function handle(request: AgentRequest): Promise<void> {
         type: "response",
         id: request.id,
         ok: true,
-        data: await host.switchSession(request.sessionId ?? ""),
+        data: await host.switchSession(request.sessionId),
       });
       return;
     }
@@ -172,7 +174,7 @@ async function handle(request: AgentRequest): Promise<void> {
         type: "response",
         id: request.id,
         ok: true,
-        data: await host.jump(request.nodeId ?? ""),
+        data: await host.jump(request.nodeId),
       });
       return;
     }
@@ -185,7 +187,7 @@ async function handle(request: AgentRequest): Promise<void> {
         type: "response",
         id: request.id,
         ok: true,
-        data: host.saveSystemPrompt(request.text ?? ""),
+        data: host.saveSystemPrompt(request.text),
       });
       return;
     }
@@ -194,18 +196,18 @@ async function handle(request: AgentRequest): Promise<void> {
       return;
     }
     case "cwd_set": {
-      const next = host.setWorkdir(request.path ?? "");
+      const next = host.setWorkdir(request.path);
       emit({ type: "response", id: request.id, ok: true, data: { path: next } });
       return;
     }
     case "mode_set": {
-      const mode = host.setMode(request.mode ?? "regular");
+      const mode = host.setMode(request.mode);
       emit({ type: "response", id: request.id, ok: true, data: { mode } });
       return;
     }
     case "decision_answer": {
       const accepted = request.toolCallId
-        ? host.answerDecision(request.toolCallId, request.answers ?? [])
+        ? host.answerDecision(request.toolCallId, request.answers)
         : false;
       emit({ type: "response", id: request.id, ok: true, data: { accepted } });
       return;
@@ -215,19 +217,20 @@ async function handle(request: AgentRequest): Promise<void> {
       return;
     }
     case "theme_save": {
-      emit({ type: "response", id: request.id, ok: true, data: theme.save(request.text ?? "") });
+      emit({ type: "response", id: request.id, ok: true, data: theme.save(request.text) });
       return;
     }
     case "ui_preset": {
-      emit({ type: "response", id: request.id, ok: true, data: theme.applyPreset(request.name ?? "") });
+      emit({ type: "response", id: request.id, ok: true, data: theme.applyPreset(request.name) });
       return;
     }
     default: {
+      const unknown = request as { id: string; type: string };
       emit({
         type: "response",
-        id: request.id,
+        id: unknown.id,
         ok: false,
-        error: `unknown request type: ${String((request as { type: string }).type)}`,
+        error: `unknown request type: ${unknown.type}`,
       });
     }
   }

@@ -14,7 +14,6 @@ export function ThinkingIndicator({
   const [now, setNow] = useState(nowMs);
 
   useEffect(() => {
-    setNow(nowMs());
     const timer = window.setInterval(() => setNow(nowMs()), TICK_MS);
     return () => window.clearInterval(timer);
   }, [startedAt]);

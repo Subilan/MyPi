@@ -5,6 +5,7 @@ import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import { Type } from "@earendil-works/pi-ai";
 
 const MAX_READ_CHARS = 200_000;
+const MAX_READ_BYTES = 16 * 1024 * 1024;
 const MAX_OUTPUT_CHARS = 100_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
 const MIN_TIMEOUT_MS = 1_000;
@@ -37,6 +38,7 @@ const bashParameters = Type.Object({
 export interface WorkdirToolOptions {
   supportsImages: boolean;
   imageMaxBytes?: number;
+  maxReadBytes?: number;
 }
 
 export function createWorkdirTools(
@@ -59,7 +61,7 @@ function readTool(
     name: "Read",
     label: "Read",
     description:
-      "读取工作目录下的文件。文本文件可以指定起始行与行数；图片（png/jpeg/gif/webp/bmp）会作为图像返回。",
+      "读取文件（相对路径按工作目录解析，绝对路径可直接使用）。文本文件可以指定起始行与行数；图片（png/jpeg/gif/webp/bmp）会作为图像返回。",
     parameters: readParameters,
     async execute(_id, params) {
       const target = resolve(params.path);
@@ -70,6 +72,13 @@ function readTool(
         return fail(`文件不存在：${target}`);
       }
       if (!stat.isFile()) return fail(`不是文件：${target}`);
+
+      const maxReadBytes = options.maxReadBytes ?? MAX_READ_BYTES;
+      if (stat.size > maxReadBytes) {
+        return fail(
+          `文件 ${target} 有 ${stat.size} 字节，超过单次读取上限 ${maxReadBytes} 字节，请改用 Bash（如 head / sed）分段查看`,
+        );
+      }
 
       let buffer: Buffer;
       try {

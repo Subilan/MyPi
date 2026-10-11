@@ -9,7 +9,7 @@ import type {
   AgentModeData,
   AgentPromptFileData,
   AgentRecord,
-  AgentRequest,
+  AgentRequestPayload,
   AgentSessionData,
   AgentSessionListData,
   AgentSessionSearchData,
@@ -21,6 +21,7 @@ import type {
 } from "@shared/protocol";
 
 const RECORD_EVENT = "agent://record";
+const REQUEST_TIMEOUT_MS = 30_000;
 
 export interface AppInfo {
   name: string;
@@ -33,6 +34,7 @@ export interface AppInfo {
 type PendingResponse = {
   resolve: (data: unknown) => void;
   reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
 };
 
 export function isTauriRuntime(): boolean {
@@ -161,6 +163,7 @@ export class AgentClient {
       const pending = this.#pending.get(record.id);
       if (pending) {
         this.#pending.delete(record.id);
+        clearTimeout(pending.timer);
         if (record.ok) pending.resolve(record.data);
         else pending.reject(new Error(record.error));
       }
@@ -174,14 +177,21 @@ export class AgentClient {
   }
 
   #failPending(error: Error): void {
-    for (const pending of this.#pending.values()) pending.reject(error);
+    for (const pending of this.#pending.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(error);
+    }
     this.#pending.clear();
   }
 
-  async #send<T>(request: Omit<AgentRequest, "id">): Promise<T> {
+  async #send<T>(request: AgentRequestPayload): Promise<T> {
     const id = `req-${(this.#counter += 1)}`;
     const response = new Promise<unknown>((resolve, reject) => {
-      this.#pending.set(id, { resolve, reject });
+      const timer = setTimeout(() => {
+        this.#pending.delete(id);
+        reject(new Error(`agent request timed out (${request.type})`));
+      }, REQUEST_TIMEOUT_MS);
+      this.#pending.set(id, { resolve, reject, timer });
     });
 
     try {

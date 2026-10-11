@@ -170,11 +170,27 @@ where
     std::thread::spawn(move || {
         for line in BufReader::new(stream).lines().map_while(Result::ok) {
             let trimmed = line.trim();
-            if !trimmed.is_empty() {
-                let _ = app.emit(RECORD_EVENT, log_record("info", trimmed));
+            if trimmed.is_empty() {
+                continue;
             }
+            let (level, message) = split_log_line(trimmed);
+            let _ = app.emit(RECORD_EVENT, log_record(level, message));
         }
     });
+}
+
+fn split_log_line(line: &str) -> (&str, &str) {
+    if let Some(rest) = line.strip_prefix("[sidecar] ") {
+        for level in ["error", "warn", "info"] {
+            if let Some(message) = rest
+                .strip_prefix(level)
+                .and_then(|tail| tail.strip_prefix(": "))
+            {
+                return (level, message);
+            }
+        }
+    }
+    ("warn", line)
 }
 
 fn watch_child<R: Runtime>(app: AppHandle<R>) {
@@ -497,5 +513,26 @@ fn closed_record(reason: &str) -> serde_json::Value {
 fn debug_log(message: impl std::fmt::Display) {
     if env::var_os("MYPI_DEBUG").is_some() {
         eprintln!("[agent] {message}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_log_line;
+
+    #[test]
+    fn reads_the_sidecar_level_prefix() {
+        assert_eq!(split_log_line("[sidecar] error: boom"), ("error", "boom"));
+        assert_eq!(split_log_line("[sidecar] warn: careful"), ("warn", "careful"));
+        assert_eq!(split_log_line("[sidecar] info: serving"), ("info", "serving"));
+    }
+
+    #[test]
+    fn falls_back_to_warn_for_unprefixed_lines() {
+        assert_eq!(split_log_line("stack trace"), ("warn", "stack trace"));
+        assert_eq!(
+            split_log_line("[sidecar] something"),
+            ("warn", "[sidecar] something")
+        );
     }
 }
